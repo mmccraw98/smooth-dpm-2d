@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <iomanip>
+#include <random>
 
 #include "dpm.hpp"
 
@@ -84,10 +85,7 @@ void DPM2D::setAreaForceEnergy(const int i, const int k) {
     // use the derivative of the trapezoid area formula with respect to pos_k to get force_k
     this->force_vertex[this->geomconfig.N_dim * k] += this->forceparams.k_a * magnitude_area * (this->pos_i[1] + this->pos_k[1]) / 2;
     this->force_vertex[this->geomconfig.N_dim * k + 1] -= this->forceparams.k_a * magnitude_area * (this->pos_i[0] - this->pos_k[0]) / 2;
-
-    // update the potential energy
-    this->pot_eng_area += this->forceparams.k_a * magnitude_area * magnitude_area / 2.0;
-    this->pot_eng += this->pot_eng_area;
+    // NOTE - moved the potential energy update to the innerDpmForceRoutine() function
 }
 
 void DPM2D::setBondBendStretchForcesEnergies(const int i, const int j, const int k) {
@@ -129,17 +127,11 @@ void DPM2D::setBondBendStretchForcesEnergies(const int i, const int j, const int
     this->perimeter += this->bond_lengths[i];
 
     // increment the energies
-    this->pot_eng_length += magnitude_length * magnitude_length * this->forceparams.k_l / 2.0;
-    this->pot_eng_angle += magnitude_angle * magnitude_angle * this->forceparams.k_b/ 2.0;
-    this->pot_eng += this->pot_eng_length + this->pot_eng_angle;
+    this->pot_eng += magnitude_length * magnitude_length * this->forceparams.k_l / 2.0 + magnitude_angle * magnitude_angle * this->forceparams.k_b / 2.0;
 }
 
 void DPM2D::innerDpmForceRoutine() {
     // reset the forces and energies
-    this->pot_eng_length = 0.0;
-    this->pot_eng_angle = 0.0;
-    this->pot_eng_area = 0.0;
-    this->pot_eng_int = 0.0;
     this->pot_eng = 0.0;
     this->kin_eng = 0.0;
     std::fill(this->force_dpm.begin(), this->force_dpm.end(), 0.0);
@@ -175,6 +167,8 @@ void DPM2D::innerDpmForceRoutine() {
         // set the forces and energies
         this->setAreaForceEnergy(i, k);
     }
+    double magnitude_area = (this->area - this->forceparams.A_0);
+    this->pot_eng += this->forceparams.k_a * magnitude_area * magnitude_area / 2.0;  // NOTE - if this goes in the per-vertex force calculation, you need to divide by the number of vertices to avoid double counting
 }
 
 void DPM2D::calcBondLengthsAnglesAreaPerimeter() {
@@ -238,18 +232,18 @@ void DPM2D::writeToLogFiles(std::ofstream& vertex_log, std::ofstream& dpm_log, i
             // add the vertex kinetic energy to the dpm kinetic energy
             this->kin_eng += this->forceparams.mass_vertex * this->vel_vertex[this->geomconfig.N_dim * i + dim] * this->vel_vertex[this->geomconfig.N_dim * i + dim] / 2.0;
             // write the vertex log file
-            vertex_log << std::fixed << std::setprecision(precision) << step << "," << this->geomconfig.dt * step << "," << dpm_id << "," << i << "," << this->pos_vertex[this->geomconfig.N_dim * i] << "," << this->pos_vertex[this->geomconfig.N_dim * i + 1] << "," << this->vel_vertex[this->geomconfig.N_dim * i] << "," << this->vel_vertex[this->geomconfig.N_dim * i + 1] << "," << this->force_vertex[this->geomconfig.N_dim * i] << "," << this->force_vertex[this->geomconfig.N_dim * i + 1] << "\n";
         }
+        vertex_log << std::fixed << std::setprecision(precision) << step << "," << this->geomconfig.dt * step << "," << dpm_id << "," << i << "," << this->pos_vertex[this->geomconfig.N_dim * i] << "," << this->pos_vertex[this->geomconfig.N_dim * i + 1] << "," << this->vel_vertex[this->geomconfig.N_dim * i] << "," << this->vel_vertex[this->geomconfig.N_dim * i + 1] << "," << this->force_vertex[this->geomconfig.N_dim * i] << "," << this->force_vertex[this->geomconfig.N_dim * i + 1] << "\n";
     }
 
     // divide the dpm position by the number of vertices
-    for (int dim = 0; dim < this->geomconfig.N_dim; ++dim) { //
+    for (int dim = 0; dim < this->geomconfig.N_dim; ++dim) {
         this->pos_dpm[dim] /= this->n_vertices;
         this->vel_dpm[dim] /= this->n_vertices;
         this->force_dpm[dim] /= this->n_vertices;
     }
     // write the dpm log file
-    dpm_log << std::fixed << std::setprecision(precision) << step << "," << this->geomconfig.dt * step << "," << dpm_id << "," << this->pos_dpm[0] << "," << this->pos_dpm[1] << "," << this->vel_dpm[0] << "," << this->vel_dpm[1] << "," << this->force_dpm[0] << "," << this->force_dpm[1] << "," << this->pot_eng_length << "," << this->pot_eng_area << "," << this->pot_eng_angle << "," << this->pot_eng_int << "," << this->pot_eng << "," << this->kin_eng << "," << this->area << "," << this->perimeter << "," << this->forceparams.mass_dpm << "," << this->forceparams.mass_vertex << "," << this->forceparams.sigma << "," << this->forceparams.l_0 << "," << this->forceparams.A_0 << "," << this->forceparams.theta_0 << "," << this->forceparams.k << "," << this->forceparams.k_l << "," << this->forceparams.k_b << "," << this->forceparams.k_a << "\n";
+    dpm_log << std::fixed << std::setprecision(precision) << step << "," << this->geomconfig.dt * step << "," << dpm_id << "," << this->pos_dpm[0] << "," << this->pos_dpm[1] << "," << this->vel_dpm[0] << "," << this->vel_dpm[1] << "," << this->force_dpm[0] << "," << this->force_dpm[1] << "," << this->pot_eng << "," << this->kin_eng << "," << this->pot_eng + this->kin_eng << "," << this->area << "," << this->perimeter << "," << this->forceparams.mass_dpm << "," << this->forceparams.mass_vertex << "," << this->forceparams.sigma << "," << this->forceparams.l_0 << "," << this->forceparams.A_0 << "," << this->forceparams.theta_0 << "," << this->forceparams.k << "," << this->forceparams.k_l << "," << this->forceparams.k_b << "," << this->forceparams.k_a << "," << this->forceparams.Q << "\n";
 }
 
 std::ofstream createVertexLogFile(const std::string& file_path) {
@@ -268,19 +262,20 @@ std::ofstream createDpmLogFile(const std::string& file_path) {
     if (!file.is_open()) {
         std::cout << "ERROR: could not open dpm log file " << file_path << std::endl;
     }
-    file << "step,t,dpm_id,x,y,vx,vy,fx,fy,pe_length,pe_area,pe_angle,pe_int,pe,ke,area,perim,mass,vertex_mass,vertex_sigma,length_0,area_0,angle_0,k,k_l,k_b,k_a\n";
+    file << "step,t,dpm_id,x,y,vx,vy,fx,fy,pe,ke,te,area,perim,mass,vertex_mass,vertex_sigma,length_0,area_0,angle_0,k,k_l,k_b,k_a,Q\n";
     return file;
 }
 
 void writeMacroConsoleHeader() {
-    std::cout << std::string(12 * 7 + 6, '_') << std::endl;
+    std::cout << std::string(12 * 8 + 6, '_') << std::endl;
     std::cout << std::setw(12) << "step" << " | " 
               << std::setw(12) << "time" << " | " 
               << std::setw(12) << "pe" << " | " 
               << std::setw(12) << "ke" << " | " 
+              << std::setw(12) << "te" << " | "
               << std::setw(12) << "phi" << " | " 
               << std::setw(12) << "temp" << "\n";
-    std::cout << std::string(12 * 7 + 6, '_') << std::endl;
+    std::cout << std::string(12 * 8 + 6, '_') << std::endl;
 }
 
 std::ofstream createMacroLogFile(const std::string& file_path) {
@@ -289,9 +284,27 @@ std::ofstream createMacroLogFile(const std::string& file_path) {
     if (!file.is_open()) {
         std::cout << "ERROR: could not open macro log file " << file_path << std::endl;
     }
-    file << "step,t,pe,ke,phi,temp\n";
+    file << "step,t,pe,ke,te,phi,temp,eta\n";
 
     return file;
+}
+
+std::ofstream createConfigLogFile(const std::string& file_path, GeomConfig2D& geomconfig) {
+    // create the config file in the dir
+    std::ofstream file;
+    file.open(file_path);
+    if (!file.is_open()) {
+        std::cout << "ERROR: could not open macro log file " << file_path << std::endl;
+    }
+    file << "step,Lx,Ly,dt,kb" << std::endl;
+    return file;
+}
+
+void writeToConfigLogFile(std::ofstream& config_log, GeomConfig2D& geomconfig, int step, int precision) {
+    if (!config_log) {
+        std::cout << "ERROR: could not write to config log file" << std::endl;
+    }
+    config_log << std::fixed << std::setprecision(precision) << step << "," << geomconfig.box_size[0] << "," << geomconfig.box_size[1] << "," << geomconfig.dt << "," << geomconfig.kb << "\n";
 }
 
 void writeToMacroLogFile(std::ofstream& macro_log, std::vector<DPM2D>& dpms, int step, GeomConfig2D& geomconfig, int precision, int console_log_freq) {
@@ -302,24 +315,27 @@ void writeToMacroLogFile(std::ofstream& macro_log, std::vector<DPM2D>& dpms, int
     double pe = 0.0;
     double ke = 0.0;
     double phi = 0.0;
+    int num_vertices = 0;
     for (int id = 0; id < dpms.size(); ++id) {
         pe += dpms[id].pot_eng;
         ke += dpms[id].kin_eng;
         phi += dpms[id].area;
+        num_vertices += dpms[id].n_vertices;
     }
     // calculate the temperature
-    double temp = 2 * ke / (geomconfig.N_dim * dpms.size());
+    double temp = 2 * ke / (geomconfig.N_dim * num_vertices * geomconfig.kb);
     // calculate the packing fraction
     phi /= (geomconfig.box_size[0] * geomconfig.box_size[1]);
 
     // write the macro log file
-    macro_log << std::fixed << std::setprecision(precision) << step << "," << dpms[0].geomconfig.dt * step << "," << pe << "," << ke << "," << phi << "," << temp << "\n";
+    macro_log << std::fixed << std::setprecision(precision) << step << "," << dpms[0].geomconfig.dt * step << "," << pe << "," << ke  << " , " << pe + ke << "," << phi << "," << temp << "," << dpms[0].forceparams.eta << "\n";
     // log to console the same thing
     if (step % console_log_freq == 0) {
        std::cout << std::setw(12) << std::fixed << std::setprecision(3) << step << " | " 
           << std::setw(12) << std::scientific << std::setprecision(3) << (dpms[0].geomconfig.dt * step) << " | " 
           << std::setw(12) << std::scientific << std::setprecision(3) << pe << " | " 
           << std::setw(12) << std::scientific << std::setprecision(3) << ke << " | " 
+          << std::setw(12) << std::scientific << std::setprecision(3) << ke + pe << " | " 
           << std::setw(12) << std::scientific << std::setprecision(3) << phi << " | " 
           << std::setw(12) << std::scientific << std::setprecision(3) << temp << "\n";
     }
@@ -339,16 +355,9 @@ void initDataFiles(std::string dir, GeomConfig2D geomconfig) {
     // make the dir
     std::string command = "mkdir " + dir;
     system(command.c_str());
-
-    // create the config file in the dir
-    std::ofstream config_file;
-    config_file.open(dir + "config.csv");
-    config_file << "Lx,Ly,dt,kb" << std::endl;
-    config_file << geomconfig.box_size[0] << "," << geomconfig.box_size[1] << "," << geomconfig.dt << "," << geomconfig.dt << std::endl;
-    config_file.close();
 }
 
-void logDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step, int save_freq, int console_log_freq, std::ofstream& vertex_log, std::ofstream& dpm_log, std::ofstream& macro_log, GeomConfig2D& geomconfig) {
+void logDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step, int save_freq, int console_log_freq, std::ofstream& vertex_log, std::ofstream& dpm_log, std::ofstream& macro_log, std::ofstream& config_log, GeomConfig2D& geomconfig) {
     if (step % save_freq == 0) {
         for (int id = 0; id < num_dpms; ++id) {
             dpms[id].writeToLogFiles(vertex_log, dpm_log, step, id);
@@ -356,6 +365,7 @@ void logDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step, int save_freq,
 
         // write the macro variables to the log file
         writeToMacroLogFile(macro_log, dpms, step, geomconfig, 10, console_log_freq);
+        writeToConfigLogFile(config_log, geomconfig, step, 10);
     }
 }
 
@@ -381,8 +391,8 @@ void DPM2D::setParticleVertexForceEnergy(DPM2D& other_dpm, int other_vertex_i) {
                     other_dpm.force_vertex[other_dpm.geomconfig.N_dim * other_vertex_i + dim] += this->forceparams.k * magnitude * this->l_ij[dim] / dist;
                 }
                 // calculate the energy
-                other_dpm.pot_eng_int += this->forceparams.k * magnitude * magnitude / 2.0;
-                this->pot_eng_int += this->forceparams.k * magnitude * magnitude / 2.0;
+                other_dpm.pot_eng += this->forceparams.k * magnitude * magnitude / 2.0;
+                this->pot_eng += this->forceparams.k * magnitude * magnitude / 2.0;
             }
         }
         else {
@@ -438,8 +448,101 @@ void DPM2D::setParticleSegmentForceEnergy(DPM2D& other_dpm, int other_vertex_i) 
                     other_dpm.force_vertex[other_dpm.geomconfig.N_dim * other_vertex_i + dim] += this->forceparams.k * magnitude * this->l_ki[dim] / dist;
                 }
                 // calculate the energy
-                other_dpm.pot_eng_int += this->forceparams.k * magnitude * magnitude / 2.0;
-                this->pot_eng_int += this->forceparams.k * magnitude * magnitude / 2.0;
+                other_dpm.pot_eng += this->forceparams.k * magnitude * magnitude / 2.0;
+                this->pot_eng += this->forceparams.k * magnitude * magnitude / 2.0;
+            }
+        }
+    }
+}
+
+// particle - particle force energy for WCA (repulsive lennard jones)
+void DPM2D::setParticleVertexForceEnergyWCA(DPM2D& other_dpm, int other_vertex_i) {
+    // set setPos_i(other_vertex_id) in the other dpm first!
+    other_dpm.setPos_i(other_vertex_i);
+    // loop over all vertices
+    for (int i = 0; i < this->n_vertices; ++i) {
+        if (this->vertex_is_active[i]) {
+            // set this position
+            this->setPos_i(i);
+            // calculate the distance vector between the particle and the vertex
+            setDistVect(this->l_ij, this->pos_i, other_dpm.pos_i, this->geomconfig);
+            // calculate the distance between the particle and the vertex
+            double dist = getVectLength(this->l_ij, this->geomconfig);
+
+            if (dist < this->forceparams.sigma * 1.122462048309373) {  // 2^(1/6) * sigma
+                // calculate the force
+                double sigma12 = std::pow(this->forceparams.sigma, 12) / std::pow(dist, 12);
+                double sigma6 = std::pow(this->forceparams.sigma, 6) / std::pow(dist, 6);
+                double force_magnitude = 24 * this->forceparams.k * (2 * sigma12 - sigma6) / dist;
+                double energy_magnitude = 4 * this->forceparams.k * (sigma12 - sigma6) + this->forceparams.k;
+
+                for (int dim = 0; dim < this->geomconfig.N_dim; ++dim) {
+                    this->force_vertex[this->geomconfig.N_dim * i + dim] += force_magnitude * this->l_ij[dim] / dist;
+                    other_dpm.force_vertex[other_dpm.geomconfig.N_dim * other_vertex_i + dim] -= force_magnitude * this->l_ij[dim] / dist;
+                }
+                // calculate the energy
+                other_dpm.pot_eng += energy_magnitude / 2.0;
+                this->pot_eng += energy_magnitude / 2.0;
+            }
+        }
+        else {
+            this->vertex_is_active[i] = true;
+        }
+    }
+}
+
+// particle - segment force energy for WCA (repulsive lennard jones)
+void DPM2D::setParticleSegmentForceEnergyWCA(DPM2D& other_dpm, int other_vertex_i) {
+    // set other positions
+    other_dpm.setPos_i(other_vertex_i);
+
+    // loop over all vertices
+    for (int i = 0; i < this->n_vertices; ++i) {
+        // get segment endpoint
+        this->setPos_i(i);
+        // get segment origin
+        int j = this->getPrevVertex(i);
+        this->setPos_j(j);
+        // calculate the segment vector
+        setDistVect(this->l_ij, this->pos_i, this->pos_j, this->geomconfig);
+        // calculate the projection of the particle onto the segment
+        double proj_length = calcProjection(other_dpm.pos_i, this->pos_j, this->l_ij, this->bond_lengths[i], this->geomconfig);
+        // if the projection is within the segment, calculate the force
+        if (proj_length > 0 and proj_length < this->bond_lengths[i]) {
+            // calculate the position of the projection
+            this->setProjLengthToPos_k(proj_length, bond_lengths[i]);
+            // turn off the vertices
+            this->vertex_is_active[i] = false;
+            this->vertex_is_active[j] = false;
+
+            // store the projection position in pos_k
+            // calculate the distance vector between pos_k and other.pos_i
+            setDistVect(this->l_ki, this->pos_k, other_dpm.pos_i, this->geomconfig);  // points to pos_k (projection on segment)
+
+            // get the distance between the projection and the particle
+            // calculate the distance between pos_k and other.pos_i
+            double dist = getVectLength(this->l_ki, this->geomconfig);
+            
+            // if there is an overlap, calculate the force
+            if (dist < this->forceparams.sigma * 1.122462048309373) {  // 2^(1/6) * sigma
+
+                double sigma12 = std::pow(this->forceparams.sigma, 12) / std::pow(dist, 12);
+                double sigma6 = std::pow(this->forceparams.sigma, 6) / std::pow(dist, 6);
+                double force_magnitude = 24 * this->forceparams.k * (2 * sigma12 - sigma6) / dist;
+                double energy_magnitude = 4 * this->forceparams.k * (sigma12 - sigma6) + this->forceparams.k;
+
+
+                // the force is distributed between the two vertices using statics
+                double ratio = proj_length / this->bond_lengths[i];
+                for (int dim = 0; dim < this->geomconfig.N_dim; ++dim) {
+                    this->force_vertex[this->geomconfig.N_dim * i + dim] += force_magnitude * ratio * this->l_ki[dim] / dist;  // MAY HAVE TO ADJUST SIGN
+                    this->force_vertex[this->geomconfig.N_dim * j + dim] += force_magnitude * (1.0 - ratio) * this->l_ki[dim] / dist;  // MAY HAVE TO ADJUST SIGN
+
+                    other_dpm.force_vertex[other_dpm.geomconfig.N_dim * other_vertex_i + dim] -= force_magnitude * this->l_ki[dim] / dist;  // MAY HAVE TO ADJUST SIGN
+                }
+                // calculate the energy  // DO THESE NEED TO BE DIVIDED BY 2?  yes
+                other_dpm.pot_eng += energy_magnitude / 2.0;
+                this->pot_eng += energy_magnitude / 2.0;
             }
         }
     }
@@ -457,13 +560,23 @@ void DPM2D::setInteractionForceEnergy(DPM2D& other_dpm) {
     // loop over all the other dpm vertices
     for (int other_vertex_i = 0; other_vertex_i < other_dpm.n_vertices; ++other_vertex_i) {
         // calculate the particle - segment interaction
-        this->setParticleSegmentForceEnergy(other_dpm, other_vertex_i);
+        this->setParticleSegmentForceEnergyWCA(other_dpm, other_vertex_i);
         // calculate the particle - vertex interaction
-        this->setParticleVertexForceEnergy(other_dpm, other_vertex_i);
+        this->setParticleVertexForceEnergyWCA(other_dpm, other_vertex_i);
     }
 }
 
-void verletStepDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step) {
+void dampDpms(std::vector<DPM2D>& dpms, double damping) {
+    for (int id = 0; id < dpms.size(); ++id) {
+        for (int dim = 0; dim < dpms[id].geomconfig.N_dim; ++dim) {
+            for (int i = 0; i < dpms[id].n_vertices; ++i) {
+                dpms[id].force_vertex[dpms[id].geomconfig.N_dim * i + dim] -= damping * dpms[id].vel_vertex[dpms[id].geomconfig.N_dim * i + dim];
+            }
+        }
+    }
+}
+
+void verletStepDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step, double damping) {
     for (int id = 0; id < num_dpms; ++id) {  // TODO parallelize this
         dpms[id].verletPositionStep();
     }
@@ -478,9 +591,57 @@ void verletStepDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step) {
             }
         }
     }
+    if (damping > 0) {
+        dampDpms(dpms, damping);
+    }
 
     for (int id = 0; id < num_dpms; ++id) {  // TODO parallelize this
         dpms[id].verletVelocityStep();
+    }
+}
+
+void noseHooverVelocityVerletStepDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step, double& eta, double T_target, double Q, double damping) {
+    double eta_half = 0.0;
+    double ke_half_sum = 0.0;
+    double ke_sum = 0.0;
+    
+    // update the positions
+    int num_particles = 0;
+    for (int id = 0; id < num_dpms; ++id) {  // TODO parallelize this
+        dpms[id].noseHooverVelocityVerletPositionStep(eta);
+        num_particles += dpms[id].n_vertices;
+    }
+    double K = (dpms[0].geomconfig.N_dim * num_particles + 1) / 2 * dpms[0].geomconfig.kb * T_target;
+
+    // update the half velocities and store them in acceleration temporarily (also updates the half-eta)
+    for (int id = 0; id < num_dpms; ++id) {  // TODO parallelize this
+        dpms[id].noseHooverVelocityVerletHalfVelocityStep(eta, Q, K, ke_half_sum, ke_sum);
+    }
+
+    // update the forces
+    for (int id = 0; id < num_dpms; ++id) {  // TODO parallelize this
+        dpms[id].innerDpmForceRoutine();
+    }
+    for (int id = 0; id < num_dpms; ++id) {  // TODO parallelize this
+        for (int other_id = 0; other_id < num_dpms; ++other_id) {  // TODO - test if double counting
+            if (id != other_id) {
+                dpms[id].setInteractionForceEnergy(dpms[other_id]);
+            }
+        }
+    }
+    if (damping > 0) {
+        dampDpms(dpms, damping);
+    }
+    
+    // update the eta half-step using the kinetic energy sum
+    eta_half = eta + dpms[0].geomconfig.dt / (2 * Q) * (ke_sum - K);
+
+    // update the eta using the half-step kinetic energy sum
+    eta = eta_half + dpms[0].geomconfig.dt / (2 * Q) * (ke_half_sum - K);
+
+    // update the velocities and reset the acceleration using the force
+    for (int id = 0; id < num_dpms; ++id) {  // TODO parallelize this
+        dpms[id].noseHooverVelocityVerletFullVelocityStep(eta);
     }
 }
 
@@ -585,20 +746,20 @@ std::vector<double> generateLatticeCoordinates(int N, double lx, double ly) {
 }
 
 
-double setLinearHarmonicForces(std::vector<double>& force, std::vector<double>& pos, std::vector<double>& distance_vector, int num_disks, GeomConfig2D& geomconfig, ForceParams& forceparams) {
+double setLinearHarmonicForces(std::vector<double>& force, std::vector<double>& pos, std::vector<double>& distance_vector, int num_disks, GeomConfig2D& geomconfig, ForceParams& forceparams, std::vector<double> radii_list) {
     // calculate the area of all the particles
     double area = 0.0;
     
     // define a force routine
     for (int i = 0; i < num_disks; ++i) {
-        area += M_PI * forceparams.sigma * forceparams.sigma / 4.0;
+        area += M_PI * radii_list[i] * radii_list[i];
         for (int j = i + 1; j < num_disks; ++j) {
             // calculate the distance between the two disks
             for (int dim = 0; dim < geomconfig.N_dim; ++dim) {
                 distance_vector[dim] = getPbcDistPoint(pos[i * geomconfig.N_dim + dim], pos[j * geomconfig.N_dim + dim], geomconfig.box_size[dim]);
             }
             double length = getVectLength(distance_vector, geomconfig);
-            double overlap = forceparams.sigma - length;  // NOTE - in bidisperse case, this will be (sigma_i + sigma_j) / 2 - length
+            double overlap = (radii_list[i] + radii_list[j]) - length;  // NOTE - in bidisperse case, this will be (sigma_i + sigma_j) / 2 - length
             if (overlap > 0) {
                 // calculate the force
                 for (int dim = 0; dim < geomconfig.N_dim; ++dim) {
@@ -620,7 +781,91 @@ double setLinearHarmonicForces(std::vector<double>& force, std::vector<double>& 
 }
 
 
-double adamMinimizeDiskForces(std::vector<double>& pos, GeomConfig2D& geomconfig, ForceParams& forceparams, int num_disks, int max_steps, double alpha, double beta1, double beta2, double epsilon) {
+double adamMinimizeDpmForce(std::vector<DPM2D> dpms, GeomConfig2D& geomconfig, int max_steps, double alpha, double beta1, double beta2, double epsilon) {
+    // will store first and second moments for each dpm in their acceleration and velocity vectors
+    for (int id = 0; id < dpms.size(); ++id) {
+        for (int i = 0; i < dpms[i].n_vertices; ++i) {
+            for (int dim = 0; dim < geomconfig.N_dim; ++dim) {
+                dpms[id].acc_vertex[geomconfig.N_dim * i + dim] = 0.0;
+                dpms[id].vel_vertex[geomconfig.N_dim * i + dim] = 0.0;
+                dpms[id].force_vertex[geomconfig.N_dim * i + dim] = 0.0;
+            }
+        }
+    }
+
+    double area = 0.0;
+    double force_norm = 0.0;
+
+    for (int t = 0; t < max_steps; ++t) {
+        // calculate the forces
+        for (int id = 0; id < dpms.size(); ++id) {  // TODO parallelize this
+            dpms[id].innerDpmForceRoutine();
+        }
+        for (int id = 0; id < dpms.size(); ++id) {  // TODO parallelize this
+            for (int other_id = 0; other_id < dpms.size(); ++other_id) {  // TODO - test if double counting
+                if (id != other_id) {
+                    dpms[id].setInteractionForceEnergy(dpms[other_id]);
+                }
+            }
+        }
+
+        // update the moments
+        for (int id = 0; id < dpms.size(); ++id) {
+            for (int i = 0; i < dpms[i].n_vertices; ++i) {
+                for (int dim = 0; dim < geomconfig.N_dim; ++dim) {
+                    // update the first moment
+                    // NOTE the negative sign on the gradient is because we get the gradient of the potential from the force (which is the negative gradient of the potential)
+                    dpms[id].acc_vertex[geomconfig.N_dim * i + dim] = beta1 * dpms[id].acc_vertex[geomconfig.N_dim * i + dim] - (1 - beta1) * dpms[id].force_vertex[geomconfig.N_dim * i + dim];
+                    
+                    // update the second moment
+                    // NOTE - no need for the negative sign here because we are squaring the gradient
+                    dpms[id].vel_vertex[geomconfig.N_dim * i + dim] = beta2 * dpms[id].vel_vertex[geomconfig.N_dim * i + dim] + (1 - beta2) * dpms[id].force_vertex[geomconfig.N_dim * i + dim] * dpms[id].force_vertex[geomconfig.N_dim * i + dim];
+
+                    // calculate the bias corrected first moment
+                    double first_moment_bias_corrected = dpms[id].acc_vertex[geomconfig.N_dim * i + dim] / (1 - std::pow(beta1, t + 1));
+
+                    // calculate the bias corrected second moment
+                    double second_moment_bias_corrected = dpms[id].vel_vertex[geomconfig.N_dim * i + dim] / (1 - std::pow(beta2, t + 1));
+
+                    // update the position
+                    dpms[id].pos_vertex[geomconfig.N_dim * i + dim] -= alpha * first_moment_bias_corrected / (std::sqrt(second_moment_bias_corrected) + epsilon);
+
+                    // update the force norm
+                    force_norm += std::pow(dpms[id].force_vertex[geomconfig.N_dim * i + dim], 2.0);
+                }
+            }
+        }
+
+        // calculate the force norm
+        force_norm = std::sqrt(force_norm);
+        std::cout << t << " " << force_norm << std::endl;
+
+        // check if the force norm is below the threshold
+        if (force_norm < epsilon) {
+            std::cout << force_norm << " success" << std::endl;
+            break;
+        }
+
+        // reset all values to 0!
+        for (int id = 0; id < dpms.size(); ++id) {
+            for (int i = 0; i < dpms[i].n_vertices; ++i) {
+                for (int dim = 0; dim < geomconfig.N_dim; ++dim) {
+                    dpms[id].acc_vertex[geomconfig.N_dim * i + dim] = 0.0;
+                    dpms[id].vel_vertex[geomconfig.N_dim * i + dim] = 0.0;
+                    dpms[id].force_vertex[geomconfig.N_dim * i + dim] = 0.0;
+                }
+            }
+        }
+    }
+
+    // calculate the area
+    for (int id = 0; id < dpms.size(); ++id) {
+        area += dpms[id].area;
+    }
+    return area / (geomconfig.box_size[0] * geomconfig.box_size[1]);  // TODO - generalize this
+}
+
+double adamMinimizeDiskForces(std::vector<double>& pos, GeomConfig2D& geomconfig, ForceParams& forceparams, std::vector<double>& radii_list, int num_disks, int max_steps, double alpha, double beta1, double beta2, double epsilon) {
     std::vector<double> gradient, first_moment, second_moment;  // these are to store the adam optimizer values
     std::vector<double> distance_vector(geomconfig.N_dim, 0.0);
 
@@ -638,7 +883,7 @@ double adamMinimizeDiskForces(std::vector<double>& pos, GeomConfig2D& geomconfig
     // run the loop
     for (int t = 0; t < max_steps; ++t) {
         // calculate the forces
-        area = setLinearHarmonicForces(gradient, pos, distance_vector, num_disks, geomconfig, forceparams);
+        area = setLinearHarmonicForces(gradient, pos, distance_vector, num_disks, geomconfig, forceparams, radii_list);
         // set the force norm back to 0
         force_norm = 0.0;
 
@@ -679,6 +924,7 @@ double adamMinimizeDiskForces(std::vector<double>& pos, GeomConfig2D& geomconfig
 
         // check if the force norm is below the threshold
         if (force_norm < epsilon) {
+            // std::cout << force_norm << " success" << std::endl;
             break;
         }
 
@@ -718,6 +964,59 @@ void DPM2D::innerDpmForceRoutinePlateCompression(std::vector<double> wall_bounds
     }
 }
 
+void DPM2D::gradDescMinDpm(int max_steps, double eta, double tol, std::vector<double> wall_pos) {
+    std::fill(this->force_vertex.begin(), this->force_vertex.end(), 0.0);
+    std::vector<bool> vertex_is_fixed(this->n_vertices, false);
+    double force_norm_prev = 0.0;
+    double force_norm_curr = 0.0;
+
+    for (int t = 0; t < max_steps; ++t) {
+        // calculate the forces
+        this->innerDpmForceRoutine();
+
+        // apply fixes to the vertices
+        for (int i = 0; i < this->n_vertices; ++i) {
+            if (this->pos_vertex[geomconfig.N_dim * i] <= wall_pos[0]) {
+                this->force_vertex[geomconfig.N_dim * i] += 1000.0 * std::pow((wall_pos[0] - this->pos_vertex[geomconfig.N_dim * i]), 2);
+                // this->pos_vertex[geomconfig.N_dim * i] = wall_pos[0];
+                // vertex_is_fixed[i] = true;
+            }
+            if (this->pos_vertex[geomconfig.N_dim * i] >= wall_pos[1]) {
+                this->force_vertex[geomconfig.N_dim * i] -= 1000.0 * std::pow((wall_pos[1] - this->pos_vertex[geomconfig.N_dim * i]), 2);
+                // this->pos_vertex[geomconfig.N_dim * i] = wall_pos[1];
+                // vertex_is_fixed[i] = true;
+            }
+        }
+
+        // apply the position updates to the non-fixed vertices
+        force_norm_curr = 0.0;
+        for (int i =0; i < this->n_vertices; ++i) {
+            for (int dim = 0; dim < this->geomconfig.N_dim; ++dim) {
+                // if (not vertex_is_fixed[i] or dim > 0) {
+                double pos_update = eta * this->force_vertex[i * this->geomconfig.N_dim + dim];
+                this->pos_vertex[i * this->geomconfig.N_dim + dim] += pos_update;
+                // }
+                force_norm_curr += this->force_vertex[i * this->geomconfig.N_dim + dim] * this->force_vertex[i * this->geomconfig.N_dim + dim];
+            }
+        }
+
+        // if the force norm is nan break
+        if (std::isnan(force_norm_curr)) {
+            std::cout << "nan" << std::endl;
+            return;
+        }
+
+        // check if the difference between the force norms is below the tolerance
+        if (std::abs(force_norm_curr - force_norm_prev) / force_norm_curr < tol) {
+            // std::cout << force_norm_curr - force_norm_prev << " success" << std::endl;
+            return;
+        }
+
+        force_norm_prev = force_norm_curr;
+    }
+    std::cout << " failed to converge" << std::endl;
+}
+
 void DPM2D::gradDescMinDpmPlateForces(int max_steps, double eta, double tol, std::vector<double> wall_bounds, double wall_strength, std::vector<double>& force_area, std::vector<double>& boundary_pos) {
     std::fill(this->force_vertex.begin(), this->force_vertex.end(), 0.0);
     std::fill(force_area.begin(), force_area.end(), 0.0);
@@ -737,6 +1036,7 @@ void DPM2D::gradDescMinDpmPlateForces(int max_steps, double eta, double tol, std
                 disp_norm += pos_update * pos_update;
             }
         }
+
         if (disp_norm < tol) {
             // std::cout << disp_norm << " success" << std::endl;
             std::fill(force_area.begin(), force_area.end(), 0.0);
@@ -810,6 +1110,7 @@ void DPM2D::adamMinimizeDpmPlateForces(int max_steps, double alpha, double beta1
         // calculate the force norm
         force_norm = std::sqrt(force_norm);
 
+
         // check if the force norm is below the threshold
         if (force_norm < epsilon) {
             this->kin_eng = force_norm;
@@ -823,4 +1124,260 @@ void DPM2D::adamMinimizeDpmPlateForces(int max_steps, double alpha, double beta1
         std::fill_n(this->vel_vertex.begin(), this->vel_vertex.size(), 0.0);
     }
     std::cout << "failed to converge " << force_norm << " " << epsilon << std::endl;
+}
+
+void plateCompressionSweep(std::string dir_base, int num_vertices, int N_points) {
+    // define the dir where everything will be saved
+    int iter = 0;
+
+    double lower_bound = std::log(1);
+    double upper_bound = std::log(500);
+    double step_size = (upper_bound - lower_bound) / (N_points - 1);
+
+    for (int i = 0; i < N_points; ++i) {
+        for (int j = 0; j < N_points; ++j) {
+            for (int k = 0; k < N_points; ++k) {
+
+                // single dpm parallel plate compression test
+                iter += 1;
+
+                double k_a = std::floor(std::exp(lower_bound + i * step_size));
+                double k_l = std::floor(std::exp(lower_bound + j * step_size));
+                double k_b = std::floor(std::exp(lower_bound + k * step_size));
+
+                GeomConfig2D geomconfig = GeomConfig2D(10.0, 10.0, 1e-3, 1.0);
+                ForceParams forceparams = ForceParams(200.0, k_l, k_b, k_a, 1.0);
+
+                std::string dir = dir_base + std::to_string(iter) + "/";
+                std::cout << dir << " of " << std::pow(N_points, 3.0) << std::endl;
+
+                initDataFiles(dir, geomconfig);
+
+                // make the logs
+                std::ofstream macro_log = createMacroLogFile(dir + "macro_log.csv");
+                std::ofstream vertex_log = createVertexLogFile(dir + "vertex_log.csv");
+                std::ofstream dpm_log = createDpmLogFile(dir + "dpm_log.csv");
+                std::ofstream config_log = createConfigLogFile(dir + "config_log.csv", geomconfig);
+
+                writeMacroConsoleHeader();
+
+                int num_steps = 20000;
+                int save_freq = 10;
+                int console_log_freq = 500;
+                double R = 2.0;
+                double dr = 0.00001;
+
+                DPM2D dpm = DPM2D(5.0, 5.0, R, num_vertices, geomconfig, forceparams, 2.0, 0.0, 0.0, 0.0, 0.0);
+                std::vector<DPM2D> dpms;
+                dpms.push_back(dpm);
+
+                std::vector<double> wall_pos = {2.99, 7.01};
+                // relax the dpm within the wall boundaries
+
+                for (int step = 0; step < num_steps; ++step) {
+                    dpms[0].gradDescMinDpm(200000, 0.0000001, 1e-5, wall_pos);
+                    if (step % save_freq == 0) {
+                        logDpmList(dpms.size(), dpms, step, save_freq, console_log_freq, vertex_log, dpm_log, macro_log, config_log, geomconfig);
+                    }
+                    wall_pos[0] += dr;
+                    wall_pos[1] -= dr;
+                }
+
+                vertex_log.close();
+                dpm_log.close();
+                config_log.close();
+                macro_log.close();
+            }
+        }
+    }
+}
+
+PosRadius generateDiskPackCoords(int num_disks, std::vector<double> radii, std::vector<double> fraction, GeomConfig2D& geomconfig, ForceParams& forceparams, double seed, double dr, double tol, double phi_target, double num_steps) {
+    double sum = 0.0;
+    int total = 0;
+    for (int i = 0; i < fraction.size(); i++) {
+        sum += fraction[i];
+        total += 1;
+    }
+    if (sum != 1.0) {
+        std::cout << "ERROR: fraction does not add to 1.0" << std::endl;
+    }
+
+    // make the radius list
+    std::vector<double> radii_list;
+    for (int i = 0; i < fraction.size(); i++) {
+        int num = std::round(fraction[i] * num_disks);
+        for (int j = 0; j < num; j++) {
+            radii_list.push_back(radii[i]);
+        }
+    }
+    num_disks = radii_list.size();
+    std::cout << "Made " << num_disks << " disks" << std::endl;
+
+    // initialize the positions of the dpms using disks to prevent overlaps
+    std::vector<double> pos;
+    std::mt19937 gen(seed);
+    std::uniform_real_distribution<> dis(0.0, 1.0);
+    for (int i = 0; i < radii_list.size(); ++i) {
+        for (int dim = 0; dim < geomconfig.N_dim; ++dim) {
+            pos.push_back(dis(gen) * geomconfig.box_size[dim]);
+        }
+    }
+    for (int step = 0; step < num_steps; ++step) {
+        double phi = adamMinimizeDiskForces(pos, geomconfig, forceparams, radii_list, num_disks, 100000, 0.01, 0.9, 0.999, tol);
+        geomconfig.box_size[0] -= dr;
+        geomconfig.box_size[1] -= dr;
+        if (step % 100 == 0) {
+            std::cout << geomconfig.box_size[0] << " " << phi << std::endl;
+        }
+        if (phi > phi_target) {
+            std::cout << geomconfig.box_size[0] << " " << phi << std::endl;
+            break;
+        }
+    }
+    // make the pos_radius struct
+    PosRadius pos_rad;
+    pos_rad.pos = pos;
+    pos_rad.radii = radii_list;
+    return pos_rad;
+}
+
+std::vector<DPM2D> generateDpmsFromDiskPack(PosRadius& pos_rad, GeomConfig2D& geomconfig, ForceParams& forceparams, double vertex_circumferencial_density, double radius_shrink_factor) {
+    // assign the coordinates to the dpms
+    std::vector<DPM2D> dpms;
+    for (int i = 0; i < pos_rad.radii.size(); ++i) {
+        double radius = pos_rad.radii[i] * radius_shrink_factor;  // to be really sure there are no overlaps
+        int num_vertices = std::round(vertex_circumferencial_density * 2 * M_PI * radius);
+        dpms.push_back(DPM2D(pos_rad.pos[2*i], pos_rad.pos[2*i+1], radius, num_vertices, geomconfig, forceparams, 2.0, 0.0, 0.0, 0.0, 0.0));
+    }
+    return dpms;
+}
+
+void shiftDpmsToVelocity(std::vector<DPM2D>& dpms, double vx, double vy) {
+    std::vector<double> total_vx(dpms.size(), 0.0);
+    std::vector<double> total_vy(dpms.size(), 0.0);
+    double vx_mean_all = 0.0;
+    double vy_mean_all = 0.0;
+    int total_vertices = 0;
+
+    for (int id = 0; id < dpms.size(); ++id) {
+        for (int i = 0; i < dpms[id].n_vertices; ++i) {
+            total_vx[id] += dpms[id].vel_vertex[2 * i];
+            total_vy[id] += dpms[id].vel_vertex[2 * i + 1];
+        }
+        total_vertices += dpms[id].n_vertices;
+    }
+
+    for (int id = 0; id < dpms.size(); ++id) {
+        vx_mean_all += total_vx[id];
+        vy_mean_all += total_vy[id];
+    }
+    vx_mean_all /= total_vertices;
+    vy_mean_all /= total_vertices;
+
+    for (int id = 0; id < dpms.size(); ++id) {
+        for (int i = 0; i < dpms[id].n_vertices; ++i) {
+            dpms[id].vel_vertex[2 * i] -= vx_mean_all;
+            dpms[id].vel_vertex[2 * i + 1] -= vy_mean_all;
+        }
+    }
+
+    // for (int id = 0; id < dpms.size(); ++id) {
+    //     double vx_mean = 0.0;
+    //     double vy_mean = 0.0;
+        
+    //     for (int i = 0; i < dpms[id].n_vertices; ++i) {
+    //         vx_mean += dpms[id].vel_vertex[2 * i];
+    //         vy_mean += dpms[id].vel_vertex[2 * i + 1];
+    //     }
+
+    //     vx_mean /= dpms[id].n_vertices;
+    //     vy_mean /= dpms[id].n_vertices;
+
+    //     for (int i = 0; i < dpms[id].n_vertices; ++i) {
+    //         dpms[id].vel_vertex[2 * i] += vx - vx_mean;
+    //         dpms[id].vel_vertex[2 * i + 1] += vy - vy_mean;
+    //     }
+    // }
+}
+
+void zeroDpmsAngularVelocity(std::vector<DPM2D>& dpms) {
+    // calculate average velocity
+    for (int id = 0; id < dpms.size(); ++id) {
+        double dv = 0.0;
+        double com_dist_sum = 0.0;
+        for (int i = 0; i < dpms[id].n_vertices; ++i) {
+            double com_dist = std::sqrt(std::pow(dpms[id].pos_vertex[2 * i], 2.0) + std::pow(dpms[id].pos_vertex[2 * i + 1], 2.0));
+            com_dist_sum += com_dist;
+            dv += (dpms[id].vel_vertex[2 * i] * (-dpms[id].pos_vertex[2 * i + 1] / com_dist) + dpms[id].vel_vertex[2 * i + 1] * (dpms[id].pos_vertex[2 * i] / com_dist)) * com_dist;
+        }
+        dv /= com_dist_sum;
+        // shift the dpm velocities
+        for (int i = 0; i < dpms[id].n_vertices; ++i) {
+            double com_dist = std::sqrt(std::pow(dpms[id].pos_vertex[2 * i], 2.0) + std::pow(dpms[id].pos_vertex[2 * i + 1], 2.0));
+            dpms[id].vel_vertex[2 * i] -= dv * (-dpms[id].pos_vertex[2 * i + 1] / com_dist);
+            dpms[id].vel_vertex[2 * i + 1] -= dv * (dpms[id].pos_vertex[2 * i] / com_dist);
+        }
+    }        
+}
+
+void scaleDpmsToTemp(std::vector<DPM2D>& dpms, GeomConfig2D& geomconfig, ForceParams& forceparams, double temp_target, double seed) {
+    // randomly assign velocities
+    srand48(seed);
+    for (int id = 0; id < dpms.size(); ++id) {
+        for (int i = 0; i < dpms[id].n_vertices; ++i) {
+            dpms[id].vel_vertex[2 * i] = (drand48() - 0.5);
+            dpms[id].vel_vertex[2 * i + 1] = (drand48() - 0.5);
+        }
+    }
+    // remove the angular velocity
+    zeroDpmsAngularVelocity(dpms);
+    // remove the center of mass velocity
+    shiftDpmsToVelocity(dpms, 0.0, 0.0);
+    // calculate the temperature
+    double ke = 0.0;
+    int num_vertices = 0;
+    for (int id = 0; id < dpms.size(); ++id) {
+        dpms[id].calcKineticEnergies();
+        ke += dpms[id].kin_eng;
+        for (int i = 0; i < dpms[id].n_vertices; ++i) {
+            num_vertices += 1;
+        }
+    }
+    double temp = 2 * ke / (geomconfig.N_dim * num_vertices * geomconfig.kb);
+    // scale the velocities
+    double scale_factor = std::sqrt(temp_target / temp);
+    std::cout << scale_factor << std::endl;
+    std::cout << temp << std::endl;
+    std::cout << ke << std::endl;
+    for (int id = 0; id < dpms.size(); ++id) {
+        for (int i = 0; i < dpms[id].n_vertices; ++i) {
+            dpms[id].vel_vertex[2 * i] *= scale_factor;
+            dpms[id].vel_vertex[2 * i + 1] *= scale_factor;
+        }
+    }
+}
+
+
+void compressDpms(std::vector<DPM2D>& dpms, GeomConfig2D& geomconfig, double dr, int N_steps, double phi_target, double damping, int compress_every) {
+    // damped compression
+    for (int step = 0; step < N_steps; ++step) {
+        verletStepDpmList(dpms.size(), dpms, step, damping);
+
+        if (step % compress_every == 0) {
+            double phi = 0.0;
+            for (int id = 0; id < dpms.size(); ++id) {
+                phi += dpms[id].area;
+            }
+            phi /= (geomconfig.box_size[0] * geomconfig.box_size[1]);
+            if (phi < phi_target) {
+                std::cout << "compressing. phi: " << phi << std::endl;
+                geomconfig.box_size[0] -= dr;
+                geomconfig.box_size[1] -= dr;
+            }
+            else {
+                break;
+            }
+        }
+    }
 }

@@ -6,8 +6,13 @@
 #include <iostream>
 #include <fstream>
 
+struct PosRadius {
+    std::vector<double> pos;
+    std::vector<double> radii;
+};
+
 struct GeomConfig2D {
-    int box_size[2];  // Store x_length and y_length
+    double box_size[2];  // Store x_length and y_length
     int N_dim;  // number of dimensions
     double dt;  // time step
     double kb;  // boltzmann constant
@@ -33,6 +38,8 @@ struct ForceParams {
     double theta_0;  // bond angle
     double A_0;  // preferred area
     double damping_coeff;  // damping coefficient
+    double Q;  // for nose-hoover thermostat
+    double eta; // for nose-hoover thermostat
 
     ForceParams(double k, double k_l, double k_b, double k_a, double mass_vertex) {
         this->k = k;
@@ -40,6 +47,8 @@ struct ForceParams {
         this->k_b = k_b;
         this->k_a = k_a;
         this->mass_vertex = mass_vertex;
+        this->Q = 0.1;  // for nose-hoover thermostat
+        this->eta = 1.0;  // for nose-hoover thermostat
         this->damping_coeff = 0.0;  // default to be 0!
         // these are default values and should be overwritten when the DPM2D is initiated
         double sigma = 1.0;  // particle - particle interaction distance (width of particles)
@@ -83,6 +92,9 @@ class DPM2D {
         inline int getNextVertex(const int i);
         inline int getPrevVertex(const int i);
         inline void setProjLengthToPos_k(const double proj_length, const double bond_length);
+        inline void noseHooverVelocityVerletPositionStep(double eta);
+        inline void noseHooverVelocityVerletHalfVelocityStep(const double eta, double Q, double K, double& ke_half_sum, double& ke_sum);
+        inline void noseHooverVelocityVerletFullVelocityStep(const double eta);
         void setAreaForceEnergy(const int i, const int k);
         void setBondBendStretchForcesEnergies(const int i, const int j, const int k);
         void innerDpmForceRoutine();
@@ -94,6 +106,9 @@ class DPM2D {
         void innerDpmForceRoutinePlateCompression(std::vector<double> wall_bounds, double wall_strength, std::vector<double>& force_area, std::vector<double>& boundary_pos);
         void adamMinimizeDpmPlateForces(int max_steps, double alpha, double beta1, double beta2, double epsilon, std::vector<double> wall_bounds, double wall_strength);
         void gradDescMinDpmPlateForces(int max_steps, double eta, double tol, std::vector<double> wall_bounds, double wall_strength, std::vector<double>& force_area, std::vector<double>& boundary_pos);
+        void gradDescMinDpm(int max_steps, double eta, double tol, std::vector<double> wall_pos);
+        void setParticleSegmentForceEnergyWCA(DPM2D& other_dpm, int other_vertex_i);
+        void setParticleVertexForceEnergyWCA(DPM2D& other_dpm, int other_vertex_i);
 
         // Default Constructor
         DPM2D(double cx, double cy, double radius, double n_vertices, GeomConfig2D& geomconfig, ForceParams forceparams, double length_diam_ratio = 2.0, double vx=0.0, double vy=0.0, double T_0=0.0, double seed=12345.0);
@@ -116,6 +131,39 @@ inline void DPM2D::verletVelocityStep() {
     for (int i = 0; i < this->n_vertices; ++i) {
         for (int dim = 0; dim < this->geomconfig.N_dim; ++dim) {
             this->vel_vertex[this->geomconfig.N_dim * i + dim] += 0.5 * this->geomconfig.dt * (this->force_vertex[this->geomconfig.N_dim * i + dim] / this->forceparams.mass_vertex + this->acc_vertex[this->geomconfig.N_dim * i + dim]);
+            this->acc_vertex[this->geomconfig.N_dim * i + dim] = this->force_vertex[this->geomconfig.N_dim * i + dim] / this->forceparams.mass_vertex;
+        }
+    }
+}
+
+inline void DPM2D::noseHooverVelocityVerletPositionStep(double eta) {
+    // update the positions
+    for (int i = 0; i < this->n_vertices; ++i) {
+        for (int dim = 0; dim < this->geomconfig.N_dim; ++dim) {
+            this->pos_vertex[this->geomconfig.N_dim * i + dim] += this->vel_vertex[this->geomconfig.N_dim * i + dim] * this->geomconfig.dt + 0.5 * (this->force_vertex[this->geomconfig.N_dim * i + dim] / forceparams.mass_vertex - eta * this->vel_vertex[this->geomconfig.N_dim * i + dim]) * this->geomconfig.dt * this->geomconfig.dt;
+        }
+    }
+}
+
+inline void DPM2D::noseHooverVelocityVerletHalfVelocityStep(const double eta, double Q, double K, double& ke_half_sum, double& ke_sum) {
+    for (int i = 0; i < this->n_vertices; ++i) {
+        for (int dim = 0; dim < this->geomconfig.N_dim; ++dim) {
+            // store the half-step velocity in the acceleration for now
+            this->acc_vertex[this->geomconfig.N_dim * i + dim] = this->vel_vertex[this->geomconfig.N_dim * i + dim] + 0.5 * (this->force_vertex[this->geomconfig.N_dim * i + dim] / forceparams.mass_vertex - eta * this->vel_vertex[this->geomconfig.N_dim * i + dim]) * this->geomconfig.dt;
+            // calculate the kinetic energy for the eta update
+            ke_sum += this->vel_vertex[this->geomconfig.N_dim * i + dim] * this->vel_vertex[this->geomconfig.N_dim * i + dim] * this->forceparams.mass_vertex / 2;
+            // calculate the kinetic energy at the half-step for the upcoming eta update
+            ke_half_sum += this->acc_vertex[this->geomconfig.N_dim * i + dim] * this->acc_vertex[this->geomconfig.N_dim * i + dim] * this->forceparams.mass_vertex / 2;
+        }
+    }
+}
+
+inline void DPM2D::noseHooverVelocityVerletFullVelocityStep(const double eta) {
+    for (int i = 0; i < this->n_vertices; ++i) {
+        for (int dim = 0; dim < this->geomconfig.N_dim; ++dim) {
+            // update the velocity using the half-step velocity (which is stored as the acceleration)
+            this->vel_vertex[this->geomconfig.N_dim * i + dim] = (this->acc_vertex[this->geomconfig.N_dim * i + dim] + 0.5 * this->force_vertex[this->geomconfig.N_dim * i + dim] * this->geomconfig.dt / this->forceparams.mass_vertex) / (1 + eta * this->geomconfig.dt / 2);
+            // reset the acceleration using the full-step force (removes the half-step velocity from temporary storage here)
             this->acc_vertex[this->geomconfig.N_dim * i + dim] = this->force_vertex[this->geomconfig.N_dim * i + dim] / this->forceparams.mass_vertex;
         }
     }
@@ -176,10 +224,6 @@ inline void DPM2D::calcKineticEnergies() {
         for (int dim = 0; dim < this->geomconfig.N_dim; ++dim) {
             this->kin_eng += this->forceparams.mass_vertex * this->vel_vertex[this->geomconfig.N_dim * i + dim] * this->vel_vertex[this->geomconfig.N_dim * i + dim] / 2.0;
         }
-    }
-    // calculate the kinetic energy of the dpm
-    for (int dim = 0; dim < this->geomconfig.N_dim; ++dim) {
-        this->kin_eng += this->forceparams.mass_dpm * this->vel_dpm[dim] * this->vel_dpm[dim] / 2.0;
     }
 }
 
@@ -305,8 +349,21 @@ void writeToMacroLogFile(std::ofstream& macro_log, std::vector<DPM2D>& dpms, int
 void writeMacroConsoleHeader();
 void tracerTest(std::string dir, int num_vertices);
 std::vector<double> generateLatticeCoordinates(int N, double lx, double ly);
-void verletStepDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step);
-void logDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step, int save_freq, int console_log_freq, std::ofstream& vertex_log, std::ofstream& dpm_log, std::ofstream& macro_log, GeomConfig2D& geomconfig);
-double setLinearHarmonicForces(std::vector<double>& force, std::vector<double>& pos, std::vector<double>& distance_vector, int num_disks, GeomConfig2D& geomconfig, ForceParams& forceparams);
-double adamMinimizeDiskForces(std::vector<double>& pos, GeomConfig2D& geomconfig, ForceParams& forceparams, int num_disks, int max_steps, double alpha, double beta1, double beta2, double epsilon);
+void verletStepDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step, double damping);
+void noseHooverVelocityVerletStepDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step, double& eta, double T_target, double Q, double damping);
+void logDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step, int save_freq, int console_log_freq, std::ofstream& vertex_log, std::ofstream& dpm_log, std::ofstream& macro_log, std::ofstream& config_log, GeomConfig2D& geomconfig);
+double setLinearHarmonicForces(std::vector<double>& force, std::vector<double>& pos, std::vector<double>& distance_vector, int num_disks, GeomConfig2D& geomconfig, ForceParams& forceparams, std::vector<double> radii_list);
+double adamMinimizeDiskForces(std::vector<double>& pos, GeomConfig2D& geomconfig, ForceParams& forceparams, std::vector<double>& radii_list, int num_disks, int max_steps, double alpha, double beta1, double beta2, double epsilon);
+double adamMinimizeDpmForce(std::vector<DPM2D> dpms, GeomConfig2D& geomconfig, int max_steps, double alpha, double beta1, double beta2, double epsilon);
+void plateCompressionSweep(std::string dir_base, int num_vertices, int N_points);
+void dampDpms(std::vector<DPM2D>& dpms, double damping);
+std::ofstream createConfigLogFile(const std::string& file_path, GeomConfig2D& geomconfig);
+void writeToConfigLogFile(std::ofstream& config_log, GeomConfig2D& geomconfig, int step, int precision);
+
+PosRadius generateDiskPackCoords(int num_disks, std::vector<double> radii, std::vector<double> fraction, GeomConfig2D& geomconfig, ForceParams& forceparams, double seed, double dr, double tol, double phi_target, double num_steps);
+std::vector<DPM2D> generateDpmsFromDiskPack(PosRadius& pos_rad, GeomConfig2D& geomconfig, ForceParams& forceparams, double vertex_circumferencial_density, double radius_shrink_factor);
+void shiftDpmsToVelocity(std::vector<DPM2D>& dpms, double vx, double vy);
+void zeroDpmsAngularVelocity(std::vector<DPM2D>& dpms);
+void scaleDpmsToTemp(std::vector<DPM2D>& dpms, GeomConfig2D& geomconfig, ForceParams& forceparams, double temp_target, double seed);
+void compressDpms(std::vector<DPM2D>& dpms, GeomConfig2D& geomconfig, double dr, int N_steps, double phi_target, double damping, int compress_every);
 #endif // DPM_HPP
