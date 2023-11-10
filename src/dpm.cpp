@@ -356,7 +356,7 @@ std::vector<double> getCircleCoords(double cx, double cy, double radius, double 
 
 void initDataFiles(std::string dir, GeomConfig2D geomconfig) {
     // make the dir
-    std::string command = "mkdir " + dir;
+    std::string command = "mkdir -p " + dir;
     system(command.c_str());
 }
 
@@ -1362,19 +1362,36 @@ void scaleDpmsToTemp(std::vector<DPM2D>& dpms, GeomConfig2D& geomconfig, ForcePa
 }
 
 
-void compressDpms(std::vector<DPM2D>& dpms, GeomConfig2D& geomconfig, double dr, int N_steps, double phi_target, double damping, int compress_every) {
+void compressDpms(std::vector<DPM2D>& dpms, GeomConfig2D& geomconfig, double dr, int N_steps, double phi_target, double damping, int compress_every, std::string dir) {
     // damped compression
+
+    initDataFiles(dir, geomconfig);
+    int save_freq = ceil(compress_every / 10);
+
+    // make the logs
+    std::ofstream macro_log = createMacroLogFile(dir + "macro_log.csv");
+    std::ofstream vertex_log = createVertexLogFile(dir + "vertex_log.csv");
+    std::ofstream dpm_log = createDpmLogFile(dir + "dpm_log.csv");
+    std::ofstream config_log = createConfigLogFile(dir + "config_log.csv", geomconfig);
+
+    writeMacroConsoleHeader();
+
     for (int step = 0; step < N_steps; ++step) {
         verletStepDpmList(dpms.size(), dpms, step, damping);
 
+        if (step % save_freq == 0) {
+            logDpmList(dpms.size(), dpms, step, save_freq, save_freq * 2, vertex_log, dpm_log, macro_log, config_log, geomconfig);
+        }
+
         if (step % compress_every == 0) {
+            writeMacroConsoleHeader();
+
             double phi = 0.0;
             for (int id = 0; id < dpms.size(); ++id) {
                 phi += dpms[id].area;
             }
             phi /= (geomconfig.box_size[0] * geomconfig.box_size[1]);
             if (phi < phi_target) {
-                std::cout << "compressing. phi: " << phi << std::endl;
                 geomconfig.box_size[0] -= dr;
                 geomconfig.box_size[1] -= dr;
             }
@@ -1383,6 +1400,11 @@ void compressDpms(std::vector<DPM2D>& dpms, GeomConfig2D& geomconfig, double dr,
             }
         }
     }
+
+    vertex_log.close();
+    dpm_log.close();
+    config_log.close();
+    macro_log.close();
 }
 
 

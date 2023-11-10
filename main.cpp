@@ -75,6 +75,13 @@ int main() {
     return 0;
 }
 
+// split the code into different files: dpm, geomconfig, forceparams, fileio, etc.
+// make a class for the simulation
+// make geomconfig more distinct
+// denote which functions only work in 2D
+
+// should probably unify the compression and simulation codes
+
 // pressure calculation
 
 // pack, make energy conservation plot

@@ -370,7 +370,7 @@ std::vector<DPM2D> generateDpmsFromDiskPack(PosRadius& pos_rad, GeomConfig2D& ge
 void shiftDpmsToVelocity(std::vector<DPM2D>& dpms, double vx, double vy);
 void zeroDpmsAngularVelocity(std::vector<DPM2D>& dpms);
 void scaleDpmsToTemp(std::vector<DPM2D>& dpms, GeomConfig2D& geomconfig, ForceParams& forceparams, double temp_target, double seed);
-void compressDpms(std::vector<DPM2D>& dpms, GeomConfig2D& geomconfig, double dr, int N_steps, double phi_target, double damping, int compress_every);
+void compressDpms(std::vector<DPM2D>& dpms, GeomConfig2D& geomconfig, double dr, int N_steps, double phi_target, double damping, int compress_every, std::string dir);
 
 int getLargestStepNumber(std::string csv_path);
 void readConfigFileAtStep(std::string config_path, GeomConfig2D& geomconfig, int step);
