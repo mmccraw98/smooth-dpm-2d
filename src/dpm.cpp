@@ -4,6 +4,9 @@
 #include <fstream>
 #include <iomanip>
 #include <random>
+#include <algorithm>
+#include <sstream>
+#include <filesystem>
 
 #include "dpm.hpp"
 
@@ -243,7 +246,7 @@ void DPM2D::writeToLogFiles(std::ofstream& vertex_log, std::ofstream& dpm_log, i
         this->force_dpm[dim] /= this->n_vertices;
     }
     // write the dpm log file
-    dpm_log << std::fixed << std::setprecision(precision) << step << "," << this->geomconfig.dt * step << "," << dpm_id << "," << this->pos_dpm[0] << "," << this->pos_dpm[1] << "," << this->vel_dpm[0] << "," << this->vel_dpm[1] << "," << this->force_dpm[0] << "," << this->force_dpm[1] << "," << this->pot_eng << "," << this->kin_eng << "," << this->pot_eng + this->kin_eng << "," << this->area << "," << this->perimeter << "," << this->forceparams.mass_dpm << "," << this->forceparams.mass_vertex << "," << this->forceparams.sigma << "," << this->forceparams.l_0 << "," << this->forceparams.A_0 << "," << this->forceparams.theta_0 << "," << this->forceparams.k << "," << this->forceparams.k_l << "," << this->forceparams.k_b << "," << this->forceparams.k_a << "," << this->forceparams.Q << "\n";
+    dpm_log << std::fixed << std::setprecision(precision) << step << "," << this->geomconfig.dt * step << "," << dpm_id << "," << this->pos_dpm[0] << "," << this->pos_dpm[1] << "," << this->vel_dpm[0] << "," << this->vel_dpm[1] << "," << this->force_dpm[0] << "," << this->force_dpm[1] << "," << this->pot_eng << "," << this->kin_eng << "," << this->pot_eng + this->kin_eng << "," << this->area << "," << this->perimeter << "," << this->forceparams.mass_dpm << "," << this->forceparams.mass_vertex << "," << this->forceparams.sigma << "," << this->forceparams.l_0 << "," << this->forceparams.A_0 << "," << this->forceparams.theta_0 << "," << this->forceparams.k << "," << this->forceparams.k_l << "," << this->forceparams.k_b << "," << this->forceparams.k_a << "," << this->forceparams.damping_coeff << ","  << this->forceparams.Q << "," << this->forceparams.eta << "\n";
 }
 
 std::ofstream createVertexLogFile(const std::string& file_path) {
@@ -262,7 +265,7 @@ std::ofstream createDpmLogFile(const std::string& file_path) {
     if (!file.is_open()) {
         std::cout << "ERROR: could not open dpm log file " << file_path << std::endl;
     }
-    file << "step,t,dpm_id,x,y,vx,vy,fx,fy,pe,ke,te,area,perim,mass,vertex_mass,vertex_sigma,length_0,area_0,angle_0,k,k_l,k_b,k_a,Q\n";
+    file << "step,t,dpm_id,x,y,vx,vy,fx,fy,pe,ke,te,area,perim,mass,vertex_mass,vertex_sigma,length_0,area_0,angle_0,k,k_l,k_b,k_a,damping,Q,eta\n";
     return file;
 }
 
@@ -1380,4 +1383,276 @@ void compressDpms(std::vector<DPM2D>& dpms, GeomConfig2D& geomconfig, double dr,
             }
         }
     }
+}
+
+
+// this is literally the worst garbage code I have ever written - I'm sorry
+
+int getLargestStepNumber(std::string csv_path) {
+    std::ifstream file(csv_path);
+    std::string line;
+    int largest_step = -1;
+    if (file.is_open()) {
+        while (getline(file, line)) {
+            std::istringstream iss(line);
+            std::vector<std::string> columns;
+            std::string column;
+
+            while (getline(iss, column, ',')) {
+                columns.push_back(column);
+            }
+
+            if (!columns.empty()) {
+                try {
+                    std::stoi(columns[0]);
+                } catch (const std::invalid_argument& ia) {
+                    continue;
+                }
+                int step = std::stoi(columns[0]);
+                if (step > largest_step) {
+                    largest_step = step;
+                }
+            }
+        }
+    }
+    file.close();
+    return largest_step;
+}
+
+
+void readConfigFileAtStep(std::string config_path, GeomConfig2D& geomconfig, int step) {
+    std::ifstream config_file(config_path);
+    std::string line;
+    if (config_file.is_open()) {
+        while (getline(config_file, line)) {
+            std::istringstream iss(line);
+            std::vector<std::string> columns;
+            std::string column;
+
+            // Split the line by commas
+            while (getline(iss, column, ',')) {
+                columns.push_back(column);
+            }
+
+            if (!columns.empty()) {
+                int step_curr = 0;
+                try {
+                    step_curr = std::stoi(columns[0]);
+                } catch (const std::invalid_argument& ia) {
+                    continue;
+                }
+                if (step_curr == step) {
+                    // step,Lx,Ly,dt,kb
+                    geomconfig.box_size[0] = std::stod(columns[1]);
+                    geomconfig.box_size[1] = std::stod(columns[2]);
+                    geomconfig.dt = std::stod(columns[3]);
+                    geomconfig.kb = std::stod(columns[4]);
+                }
+            }
+        }
+        config_file.close();
+    } else {
+        std::cerr << "Unable to open config file\n";
+    }
+}
+
+int getNumberOfDpmsAtStep(std::string dpm_log_path, int step) {
+    std::ifstream dpm_log(dpm_log_path);
+    std::string line;
+    std::vector<int> dpm_ids;
+    if (dpm_log.is_open()) {
+        while (getline(dpm_log, line)) {
+            std::istringstream iss(line);
+            std::vector<std::string> columns;
+            std::string column;
+
+            // Split the line by commas
+            while (getline(iss, column, ',')) {
+                columns.push_back(column);
+            }
+
+            if (!columns.empty()) {
+                int step_curr = 0;
+                try {
+                    step_curr = std::stoi(columns[0]);
+                } catch (const std::invalid_argument& ia) {
+                    continue;
+                }
+                if (step_curr == step) {
+                    int dpm_id = 0;
+                    try {
+                        dpm_id = std::stoi(columns[2]);
+                    } catch (const std::invalid_argument& ia) {
+                        continue;
+                    }
+                    if (std::find(dpm_ids.begin(), dpm_ids.end(), dpm_id) != dpm_ids.end()) {
+                        continue;
+                    } else {
+                        dpm_ids.push_back(dpm_id);
+                    }
+                }
+            }
+        }
+        dpm_log.close();
+    } else {
+        std::cerr << "Unable to open dpm log\n";
+    }
+    return dpm_ids.size();    
+}
+
+
+void assignVertexDataToDpmAtStep(std::string vertex_log_path, int dpm_id, int step, std::vector<DPM2D>& dpms) {
+    int num_vertices = 0;
+
+    // for a given dpm_id, get the vertex data
+    std::vector<double> pos_vertex;
+    std::vector<double> vel_vertex;
+    std::vector<double> force_vertex;
+    std::vector<double> acc_vertex;
+
+    std::ifstream vertex_log(vertex_log_path);
+    std::string line;
+    std::vector<int> vertex_ids;
+    if (vertex_log.is_open()) {
+        while (getline(vertex_log, line)) {
+            std::istringstream iss(line);
+            std::vector<std::string> columns;
+            std::string column;
+
+            // Split the line by commas
+            while (getline(iss, column, ',')) {
+                columns.push_back(column);
+            }
+
+            if (!columns.empty()) {
+                int step_curr;
+                int dpm_id_curr;
+                int vertex_id;
+                try {
+                    step_curr = std::stoi(columns[0]);
+                    dpm_id_curr = std::stoi(columns[2]);
+                    vertex_id = std::stoi(columns[3]);
+                } catch (const std::invalid_argument& ia) {
+                    continue;
+                }
+                if (step_curr == step && dpm_id_curr == dpm_id) {
+                    vertex_ids.push_back(vertex_id);
+                    pos_vertex.push_back(std::stod(columns[4]));
+                    pos_vertex.push_back(std::stod(columns[5]));
+                    vel_vertex.push_back(std::stod(columns[6]));
+                    vel_vertex.push_back(std::stod(columns[7]));
+                    force_vertex.push_back(std::stod(columns[8]));
+                    force_vertex.push_back(std::stod(columns[9]));
+                    acc_vertex.push_back(0.0);
+                    acc_vertex.push_back(0.0);
+                    num_vertices++;
+                }
+            }
+        }
+        vertex_log.close();
+    } else {
+        std::cerr << "Unable to open vertex log\n";
+    }
+
+    // assign the stuff to the dpm
+    dpms[dpm_id].vel_vertex = vel_vertex;
+    dpms[dpm_id].pos_vertex = pos_vertex;
+    dpms[dpm_id].force_vertex = force_vertex;
+    dpms[dpm_id].acc_vertex = acc_vertex;
+    std::cout << "Assigned " << num_vertices << " vertices to dpm " << dpm_id << std::endl;
+}
+
+
+void getForceParamsForDpmAtStep(std::string dpm_log_path, int dpm_id, int step, std::vector<DPM2D>& dpms, ForceParams& forceparams) {
+    std::ifstream dpm_log(dpm_log_path);
+    std::string line;
+    if (dpm_log.is_open()) {
+        while (getline(dpm_log, line)) {
+            std::istringstream iss(line);
+            std::vector<std::string> columns;
+            std::string column;
+
+            // Split the line by commas
+            while (getline(iss, column, ',')) {
+                columns.push_back(column);
+            }
+
+            if (!columns.empty()) {
+                int step_curr;
+                int dpm_id;
+                try {
+                    step_curr = std::stoi(columns[0]);
+                    dpm_id = std::stoi(columns[2]);
+                } catch (const std::invalid_argument& ia) {
+                    continue;
+                }
+                // check if step = step_curr and dpm_id is not in dpm_ids
+                if (step_curr == step && dpm_id) {
+                    dpms[dpm_id].pos_dpm[0] = std::stod(columns[3]);
+                    dpms[dpm_id].pos_dpm[1] = std::stod(columns[4]);
+                    dpms[dpm_id].vel_dpm[0] = std::stod(columns[5]);
+                    dpms[dpm_id].vel_dpm[1] = std::stod(columns[6]);
+                    dpms[dpm_id].force_dpm[0] = std::stod(columns[7]);
+                    dpms[dpm_id].force_dpm[1] = std::stod(columns[8]);
+                    dpms[dpm_id].pot_eng = std::stod(columns[9]);
+                    dpms[dpm_id].kin_eng = std::stod(columns[10]);
+                    dpms[dpm_id].area = std::stod(columns[12]);
+                    dpms[dpm_id].perimeter = std::stod(columns[13]);
+
+                    dpms[dpm_id].forceparams.mass_dpm = std::stod(columns[14]);
+                    dpms[dpm_id].forceparams.mass_vertex = std::stod(columns[15]);
+                    dpms[dpm_id].forceparams.sigma = std::stod(columns[16]);
+                    dpms[dpm_id].forceparams.l_0 = std::stod(columns[17]);
+                    dpms[dpm_id].forceparams.A_0 = std::stod(columns[18]);
+                    dpms[dpm_id].forceparams.theta_0 = std::stod(columns[19]);
+                    dpms[dpm_id].forceparams.k = std::stod(columns[20]);
+                    dpms[dpm_id].forceparams.k_l = std::stod(columns[21]);
+                    dpms[dpm_id].forceparams.k_b = std::stod(columns[22]);
+                    dpms[dpm_id].forceparams.k_a = std::stod(columns[23]);
+                    dpms[dpm_id].forceparams.damping_coeff = std::stod(columns[24]);
+                    dpms[dpm_id].forceparams.Q = std::stod(columns[25]);
+                    dpms[dpm_id].forceparams.eta = std::stod(columns[26]);
+                }
+            }
+        }
+        dpm_log.close();
+    } else {
+        std::cerr << "Unable to open vertex log\n";
+    }
+}
+
+// should probably make it so that we dont have to loop over the entire list every time but oh well - good enough for government work
+std::vector<DPM2D> loadDpmData(std::string dir, int step) {
+    std::vector<DPM2D> dpms;
+
+    // (if step is -1, then load the last step)
+    // get largest step number
+    if (step == -1) {
+        step = getLargestStepNumber(dir + "dpm_log.csv");
+        if (step == -1) {
+            std::cerr << "No data found\n";
+            return dpms;
+        }
+    }
+
+    GeomConfig2D geomconfig = GeomConfig2D(0.0, 0.0, 0.0, 0.0);
+    ForceParams forceparams = ForceParams(0.0, 0.0, 0.0, 0.0, 0.0);
+
+    // read the config file and define geomconfig
+    readConfigFileAtStep(dir + "config_log.csv", geomconfig, step);
+    
+    // get number of dpms
+    int num_dpms = getNumberOfDpmsAtStep(dir + "dpm_log.csv", step);
+
+    // make the dpm list using placeholders
+    for (int i = 0; i < num_dpms; i++) {
+        dpms.push_back(DPM2D(0.0, 0.0, 0.0, 0, geomconfig, forceparams, 0.0, 0.0, 0.0, 0.0, 0.0));
+    }
+
+    // for each dpm, assign the vertex data using the vertex log
+    for (int i = 0; i < num_dpms; i++) {
+        assignVertexDataToDpmAtStep(dir + "vertex_log.csv", i, step, dpms);
+        getForceParamsForDpmAtStep(dir + "dpm_log.csv", i, step, dpms, forceparams);
+    }
+    return dpms;
 }

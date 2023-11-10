@@ -2,73 +2,80 @@
 #include <cmath>
 #include <vector>
 #include <fstream>
+#include <sstream>
+#include <filesystem>
 #include <random>
+#include <algorithm>
 
 #include "dpm.hpp"
 
 int main() {
-    int num_steps = 10000;
-    int save_freq = 10;
-    int console_log_freq = 100;
-    double eta = 1.0;
-    double Q = 0.1;
-    double temp_target = 0.1;
 
-    GeomConfig2D geomconfig = GeomConfig2D(20.0, 20.0, 1e-4, 1.0);
-    ForceParams forceparams = ForceParams(1.0, 10.0, 10.0, 10.0, 1.0);
-    forceparams.eta = eta;
-    forceparams.Q = Q;
+    std::vector<DPM2D> dpms = loadDpmData("./data/test/", -1);
 
-    // make the dpms using a disk packing
-    std::vector<double> radii = {1.0, 1.4};
-    std::vector<double> fraction = {0.5, 0.5};
-    double phi_target = 0.8;
-    double tol = 1e-5;
-    double seed = 42;
-    PosRadius pos_rad = generateDiskPackCoords(10, radii, fraction, geomconfig, forceparams, seed, 0.1, tol, phi_target, 1000);
-    std::vector<DPM2D> dpms = generateDpmsFromDiskPack(pos_rad, geomconfig, forceparams, 3, std::pow(2, -1 / 6) * 0.87);
+    // int num_steps = 1000;
+    // int save_freq = 100;
+    // int console_log_freq = 1000;
+    // double eta = 1.0;
+    // double Q = 1.0;
+    // double temp_target = 5.0;
+    // double phi_target = 0.8;
+    // int num_dpms = 10;
 
-    // scale the dpm velocities to be at a specified temperature
-    scaleDpmsToTemp(dpms, geomconfig, forceparams, temp_target, seed);
+    // // define the directory where everything will be saved
+    // std::string dir = "./data/test/";
 
-    // define the directory where everything will be saved
-    std::string dir = "../data/test/";
+    // GeomConfig2D geomconfig = GeomConfig2D(20.0, 20.0, 1e-4, 1.0);
+    // ForceParams forceparams = ForceParams(1.0, 100.0, 100.0, 100.0, 1.0);
+    // forceparams.eta = eta;
+    // forceparams.Q = Q;
 
-    // define the dir where everything will be saved
-    initDataFiles(dir, geomconfig);
+    // // make the dpms using a disk packing
+    // std::vector<double> radii = {1.0, 1.4};
+    // std::vector<double> fraction = {0.5, 0.5};
+    // double tol = 1e-5;
+    // double seed = 42;
+    // PosRadius pos_rad = generateDiskPackCoords(num_dpms, radii, fraction, geomconfig, forceparams, seed, 0.1, tol, phi_target, 1000);
+    // std::vector<DPM2D> dpms = generateDpmsFromDiskPack(pos_rad, geomconfig, forceparams, 3, std::pow(2, -1 / 6) * 0.87);
 
-    // make the logs
-    std::ofstream macro_log = createMacroLogFile(dir + "macro_log.csv");
-    std::ofstream vertex_log = createVertexLogFile(dir + "vertex_log.csv");
-    std::ofstream dpm_log = createDpmLogFile(dir + "dpm_log.csv");
-    std::ofstream config_log = createConfigLogFile(dir + "config_log.csv", geomconfig);
+    // // scale the dpm velocities to be at a specified temperature
+    // scaleDpmsToTemp(dpms, geomconfig, forceparams, temp_target, seed);
 
-    // assign the coordinates to the dpms
+    // // define the dir where everything will be saved
+    // initDataFiles(dir, geomconfig);
 
-    // initialize the quasistatic packing simulation in the normal way
-    writeMacroConsoleHeader();
+    // // make the logs
+    // std::ofstream macro_log = createMacroLogFile(dir + "macro_log.csv");
+    // std::ofstream vertex_log = createVertexLogFile(dir + "vertex_log.csv");
+    // std::ofstream dpm_log = createDpmLogFile(dir + "dpm_log.csv");
+    // std::ofstream config_log = createConfigLogFile(dir + "config_log.csv", geomconfig);
 
-    for (int step = 0; step < num_steps; ++step) {
-        // verletStepDpmList(dpms.size(), dpms, step, 0.0);
-        noseHooverVelocityVerletStepDpmList(dpms.size(), dpms, step, eta, temp_target, Q, 0.0);
+    // // assign the coordinates to the dpms
 
-        // write the data to the files
-        if (step % save_freq == 0) {
-            dpms[0].forceparams.eta = eta;
-            logDpmList(dpms.size(), dpms, step, save_freq, console_log_freq, vertex_log, dpm_log, macro_log, config_log, geomconfig);
-        }
-    }
+    // // initialize the quasistatic packing simulation in the normal way
+    // writeMacroConsoleHeader();
 
-    vertex_log.close();
-    dpm_log.close();
-    config_log.close();
-    macro_log.close();
+    // for (int step = 0; step < num_steps; ++step) {
+    //     // verletStepDpmList(dpms.size(), dpms, step, 0.0);
+    //     noseHooverVelocityVerletStepDpmList(dpms.size(), dpms, step, eta, temp_target, Q, 0.0);
+
+    //     // write the data to the files
+    //     if (step % save_freq == 0) {
+    //         dpms[0].forceparams.eta = eta;
+    //         logDpmList(dpms.size(), dpms, step, save_freq, console_log_freq, vertex_log, dpm_log, macro_log, config_log, geomconfig);
+    //     }
+    // }
+
+    // vertex_log.close();
+    // dpm_log.close();
+    // config_log.close();
+    // macro_log.close();
 
 
     return 0;
 }
 
-// set dpm energy to be a specified temperature
+// pressure calculation
 
 // pack, make energy conservation plot
 

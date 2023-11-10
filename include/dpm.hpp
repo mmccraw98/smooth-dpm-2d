@@ -5,6 +5,11 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
+#include <iomanip>
+#include <random>
+#include <algorithm>
+#include <sstream>
+#include <filesystem>
 
 struct PosRadius {
     std::vector<double> pos;
@@ -68,7 +73,7 @@ class DPM2D {
         std::vector<double> pos_i, pos_j, pos_k;
         std::vector<double> l_ij, l_ki;
         std::vector<bool> vertex_is_active;
-        double pot_eng, kin_eng, pot_eng_length, pot_eng_angle, pot_eng_area, pot_eng_int;
+        double pot_eng, kin_eng;
         int n_vertices;
         double area, perimeter;
         ForceParams forceparams;
@@ -366,4 +371,11 @@ void shiftDpmsToVelocity(std::vector<DPM2D>& dpms, double vx, double vy);
 void zeroDpmsAngularVelocity(std::vector<DPM2D>& dpms);
 void scaleDpmsToTemp(std::vector<DPM2D>& dpms, GeomConfig2D& geomconfig, ForceParams& forceparams, double temp_target, double seed);
 void compressDpms(std::vector<DPM2D>& dpms, GeomConfig2D& geomconfig, double dr, int N_steps, double phi_target, double damping, int compress_every);
+
+int getLargestStepNumber(std::string csv_path);
+void readConfigFileAtStep(std::string config_path, GeomConfig2D& geomconfig, int step);
+int getNumberOfDpmsAtStep(std::string dpm_log_path, int step);
+void assignVertexDataToDpmAtStep(std::string vertex_log_path, int dpm_id, int step, std::vector<DPM2D>& dpms);
+void getForceParamsForDpmAtStep(std::string dpm_log_path, int dpm_id, int step, std::vector<DPM2D>& dpms, ForceParams& forceparams);
+std::vector<DPM2D> loadDpmData(std::string dir, int step);
 #endif // DPM_HPP
