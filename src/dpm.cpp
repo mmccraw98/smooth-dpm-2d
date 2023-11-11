@@ -331,7 +331,7 @@ void writeToMacroLogFile(std::ofstream& macro_log, std::vector<DPM2D>& dpms, int
     phi /= (geomconfig.box_size[0] * geomconfig.box_size[1]);
 
     // write the macro log file
-    macro_log << std::fixed << std::setprecision(precision) << step << "," << dpms[0].geomconfig.dt * step << "," << pe << "," << ke  << " , " << pe + ke << "," << phi << "," << temp << "," << dpms[0].forceparams.eta << "\n";
+    macro_log << std::fixed << std::setprecision(precision) << step << "," << dpms[0].geomconfig.dt * step << "," << pe << "," << ke  << "," << pe + ke << "," << phi << "," << temp << "," << dpms[0].forceparams.eta << "\n";
     // log to console the same thing
     if (step % console_log_freq == 0) {
        std::cout << std::setw(12) << std::fixed << std::setprecision(3) << step << " | " 

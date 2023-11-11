@@ -75,6 +75,21 @@ int main() {
     return 0;
 }
 
+// fix loading script
+// make simulation script stop if nan detected when saving
+// have option to restart simulation from prior step if nan detected (try to restart up to N times)
+
+// dpm area calculation may be very innacurate - should use a better method - phi seems to be far undercalculated
+
+// should calculate neighboring dpm non-bonded repulsion - should not get into scenarios where dpm self intersects with opposite-ended segments
+
+// Note: if the timestep is too large, or the energy is too high, or the perimeter stiffness is too small, the dpm vertices can pass through each other
+// which gives a very large increase in bending energy (the angle changes)
+
+// figure out the units
+
+// make logs separate files every N log steps
+
 // split the code into different files: dpm, geomconfig, forceparams, fileio, etc.
 // make a class for the simulation
 // make geomconfig more distinct
