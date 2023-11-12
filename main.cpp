@@ -6,12 +6,11 @@
 #include <filesystem>
 #include <random>
 #include <algorithm>
+#include "H5Cpp.h"
 
 #include "dpm.hpp"
 
 int main() {
-
-    std::vector<DPM2D> dpms = loadDpmData("./data/test/", -1);
 
     // int num_steps = 1000;
     // int save_freq = 100;
@@ -78,6 +77,8 @@ int main() {
 // fix loading script
 // make simulation script stop if nan detected when saving
 // have option to restart simulation from prior step if nan detected (try to restart up to N times)
+
+// bulk modulus and stuff
 
 // dpm area calculation may be very innacurate - should use a better method - phi seems to be far undercalculated
 
