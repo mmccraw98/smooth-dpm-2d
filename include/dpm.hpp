@@ -11,53 +11,12 @@
 #include <sstream>
 #include <filesystem>
 
-struct PosRadius {
-    std::vector<double> pos;
-    std::vector<double> radii;
-};
+#include "sim.hpp"
+#include "misc.hpp"
 
-struct SimParams2D {
-    double box_size[2];  // Store x_length and y_length
-    int N_dim;  // number of dimensions
-    double dt;  // time step
-    double kb;  // boltzmann constant
-    double k;  // particle - particle interaction
-    double k_l;  // bond stretching
-    double k_b;  // bond bending
-    double k_a;  // area constraint
-    double mass_vertex;  // mass of the vertices
-    double mass_dpm;  // mass of the dpm
-    double sigma;  // particle - particle interaction distance (width of particles)
-    double l_0;  // bond length
-    double theta_0;  // bond angle
-    double A_0;  // preferred area
-    double damping_coeff;  // damping coefficient
-    double Q;  // for nose-hoover thermostat
-    double eta; // for nose-hoover thermostat
-
-    SimParams2D(double x_length, double y_length, double dt, double kb, double k, double k_l, double k_b, double k_a, double mass_vertex) {
-        box_size[0] = x_length;
-        box_size[1] = y_length;
-        N_dim = 2;
-        this->dt = dt;
-        this->kb = kb;
-        this->k = k;
-        this->k_l = k_l;
-        this->k_b = k_b;
-        this->k_a = k_a;
-        this->mass_vertex = mass_vertex;
-        this->Q = 0.1;  // for nose-hoover thermostat
-        this->eta = 1.0;  // for nose-hoover thermostat
-        this->damping_coeff = 0.0;  // default to be 0!
-        // these are default values and should be overwritten when the DPM2D is initiated
-        double sigma = 1.0;  // particle - particle interaction distance (width of particles)
-        double l_0 = 1.0;  // bond length
-        double theta_0 = M_PI;  // bond angle
-        double A_0 = 1.0;  // preferred area
-        double mass_dpm = 1.0;  // mass of the dpm
-    }
-}
-
+// ------------------------------------------------------------------------------------------------------------------------------------------ //
+// ---------------------------------------------------------- DPM Class --------------------------------------------------------------------- //
+// ------------------------------------------------------------------------------------------------------------------------------------------ //
 
 class DPM2D {
     public:
@@ -68,53 +27,57 @@ class DPM2D {
         std::vector<double> pos_i, pos_j, pos_k;
         std::vector<double> l_ij, l_ki;
         std::vector<bool> vertex_is_active;
+        double A_0, l_0, theta_0;
         double pot_eng, kin_eng;
         int n_vertices;
+        double sigma;
         double area, perimeter;
-        SimParams2D simparams;  // sim params is inherited from the main simulation so that all dpms have the same parameters
+        SimParams2D& simparams;  // sim params is inherited from the main simulation (as a reference) so that all dpms have the same parameters
 
-        // Member functions
+        // Inline Member Functions
         void initializeVectors();
         inline void verletPositionStep();
         inline void verletVelocityStep();
+        inline void noseHooverVelocityVerletPositionStep();
+        inline void noseHooverVelocityVerletHalfVelocityStep(double& ke_half_sum, double& ke_sum);
+        inline void noseHooverVelocityVerletFullVelocityStep();
         inline void setDpmPosition();
-        inline void assignRandomNormalVelocities(const double& sigma, const double& seed);
-        inline void centerVelocities(double vx, double vy);
         inline void setDpmVelocity();
+        inline void centerVelocities(double vx, double vy);
         inline void calcKineticEnergies();
         inline double getTemperature();
         inline double rescaleVelocitiesToTemp(double T_target);
-        inline std::vector<double> getVertexPos(const int i);
         inline void setPos_i(const int i);
         inline void setPos_j(const int j);
         inline void setPos_k(const int k);
+        inline void setProjLengthToPos_k(const double proj_length, const double bond_length);
         inline int getNextVertex(const int i);
         inline int getPrevVertex(const int i);
-        inline void setProjLengthToPos_k(const double proj_length, const double bond_length);
-        inline void noseHooverVelocityVerletPositionStep(double eta);
-        inline void noseHooverVelocityVerletHalfVelocityStep(const double eta, double Q, double K, double& ke_half_sum, double& ke_sum);
-        inline void noseHooverVelocityVerletFullVelocityStep(const double eta);
+        inline std::vector<double> getVertexPos(const int i);
+
+        // Member Functions
         void setAreaForceEnergy(const int i, const int k);
         void setBondBendStretchForcesEnergies(const int i, const int j, const int k);
         void innerDpmForceRoutine();
         void calcBondLengthsAnglesAreaPerimeter();
-        void writeToLogFiles(std::ofstream& vertex_log, std::ofstream& dpm_log, int step, int dpm_id, int precision=10);
         void setParticleVertexForceEnergy(DPM2D& other_dpm, int other_vertex_i);
         void setParticleSegmentForceEnergy(DPM2D& other_dpm, int other_vertex_i);
-        void setInteractionForceEnergy(DPM2D& other_dpm);
-        void innerDpmForceRoutinePlateCompression(std::vector<double> wall_bounds, double wall_strength, std::vector<double>& force_area, std::vector<double>& boundary_pos);
-        void adamMinimizeDpmPlateForces(int max_steps, double alpha, double beta1, double beta2, double epsilon, std::vector<double> wall_bounds, double wall_strength);
-        void gradDescMinDpmPlateForces(int max_steps, double eta, double tol, std::vector<double> wall_bounds, double wall_strength, std::vector<double>& force_area, std::vector<double>& boundary_pos);
-        void gradDescMinDpm(int max_steps, double eta, double tol, std::vector<double> wall_pos);
-        void setParticleSegmentForceEnergyWCA(DPM2D& other_dpm, int other_vertex_i);
         void setParticleVertexForceEnergyWCA(DPM2D& other_dpm, int other_vertex_i);
+        void setParticleSegmentForceEnergyWCA(DPM2D& other_dpm, int other_vertex_i);
+        void setInteractionForceEnergy(DPM2D& other_dpm);
+
 
         // Default Constructor
-        DPM2D(double cx, double cy, double radius, double n_vertices, SimParams2D simparams, double length_diam_ratio=2.0, double vx=0.0, double vy=0.0, double T_0=0.0, double seed=12345.0);
+        DPM2D(double cx, double cy, double radius, double n_vertices, SimParams2D& simparams, double length_diam_ratio=2.0, double vx=0.0, double vy=0.0, double T_0=0.0, double seed=12345.0);
         
         // Default Destructor
         ~DPM2D();
 };
+
+
+// ------------------------------------------------------------------------------------------------------------------------------------------ //
+// ---------------------------------------------------------- Inline Member Functions ------------------------------------------------------- //
+// ------------------------------------------------------------------------------------------------------------------------------------------ //
 
 inline void DPM2D::verletPositionStep() {
     // update the positions
@@ -135,20 +98,20 @@ inline void DPM2D::verletVelocityStep() {
     }
 }
 
-inline void DPM2D::noseHooverVelocityVerletPositionStep(double eta) {
+inline void DPM2D::noseHooverVelocityVerletPositionStep() {
     // update the positions
     for (int i = 0; i < this->n_vertices; ++i) {
         for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
-            this->pos_vertex[this->simparams.N_dim * i + dim] += this->vel_vertex[this->simparams.N_dim * i + dim] * this->simparams.dt + 0.5 * (this->force_vertex[this->simparams.N_dim * i + dim] / simparams.mass_vertex - eta * this->vel_vertex[this->simparams.N_dim * i + dim]) * this->simparams.dt * this->simparams.dt;
+            this->pos_vertex[this->simparams.N_dim * i + dim] += this->vel_vertex[this->simparams.N_dim * i + dim] * this->simparams.dt + 0.5 * (this->force_vertex[this->simparams.N_dim * i + dim] / simparams.mass_vertex - this->simparams.eta * this->vel_vertex[this->simparams.N_dim * i + dim]) * this->simparams.dt * this->simparams.dt;
         }
     }
 }
 
-inline void DPM2D::noseHooverVelocityVerletHalfVelocityStep(const double eta, double Q, double K, double& ke_half_sum, double& ke_sum) {
+inline void DPM2D::noseHooverVelocityVerletHalfVelocityStep(double& ke_half_sum, double& ke_sum) {
     for (int i = 0; i < this->n_vertices; ++i) {
         for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
             // store the half-step velocity in the acceleration for now
-            this->acc_vertex[this->simparams.N_dim * i + dim] = this->vel_vertex[this->simparams.N_dim * i + dim] + 0.5 * (this->force_vertex[this->simparams.N_dim * i + dim] / simparams.mass_vertex - eta * this->vel_vertex[this->simparams.N_dim * i + dim]) * this->simparams.dt;
+            this->acc_vertex[this->simparams.N_dim * i + dim] = this->vel_vertex[this->simparams.N_dim * i + dim] + 0.5 * (this->force_vertex[this->simparams.N_dim * i + dim] / simparams.mass_vertex - this->simparams.eta * this->vel_vertex[this->simparams.N_dim * i + dim]) * this->simparams.dt;
             // calculate the kinetic energy for the eta update
             ke_sum += this->vel_vertex[this->simparams.N_dim * i + dim] * this->vel_vertex[this->simparams.N_dim * i + dim] * this->simparams.mass_vertex / 2;
             // calculate the kinetic energy at the half-step for the upcoming eta update
@@ -157,11 +120,11 @@ inline void DPM2D::noseHooverVelocityVerletHalfVelocityStep(const double eta, do
     }
 }
 
-inline void DPM2D::noseHooverVelocityVerletFullVelocityStep(const double eta) {
+inline void DPM2D::noseHooverVelocityVerletFullVelocityStep() {
     for (int i = 0; i < this->n_vertices; ++i) {
         for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
             // update the velocity using the half-step velocity (which is stored as the acceleration)
-            this->vel_vertex[this->simparams.N_dim * i + dim] = (this->acc_vertex[this->simparams.N_dim * i + dim] + 0.5 * this->force_vertex[this->simparams.N_dim * i + dim] * this->simparams.dt / this->simparams.mass_vertex) / (1 + eta * this->simparams.dt / 2);
+            this->vel_vertex[this->simparams.N_dim * i + dim] = (this->acc_vertex[this->simparams.N_dim * i + dim] + 0.5 * this->force_vertex[this->simparams.N_dim * i + dim] * this->simparams.dt / this->simparams.mass_vertex) / (1 + this->simparams.eta * this->simparams.dt / 2);
             // reset the acceleration using the full-step force (removes the half-step velocity from temporary storage here)
             this->acc_vertex[this->simparams.N_dim * i + dim] = this->force_vertex[this->simparams.N_dim * i + dim] / this->simparams.mass_vertex;
         }
@@ -178,17 +141,6 @@ inline void DPM2D::setDpmPosition() {
     }
     for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
         this->pos_dpm[dim] /= this->n_vertices;
-    }
-}
-
-inline void DPM2D::assignRandomNormalVelocities(const double& sigma, const double& seed) {
-    // pick the velocities from random numbers that depend on an input seed variable
-    // get number of points in velocities array
-    std::fill(this->vel_vertex.begin(), this->vel_vertex.end(), 0.0);
-    srand48(seed);
-    for (int i = 0; i < this->n_vertices; ++i) {
-        this->vel_vertex[this->simparams.N_dim * i] = sigma * (drand48() - 0.5);
-        this->vel_vertex[this->simparams.N_dim * i + 1] = sigma * (drand48() - 0.5);
     }
 }
 
@@ -289,102 +241,4 @@ inline std::vector<double> DPM2D::getVertexPos(const int i) {
     return pos_i;
 }
 
-inline double getDotProd(const std::vector<double>& vect1, const std::vector<double>& vect2, const SimParams2D& simparams) {
-    double dot_prod = 0.0;
-    for (int dim = 0; dim < simparams.N_dim; ++dim) {
-        dot_prod += vect1[dim] * vect2[dim];
-    };
-    return dot_prod;
-}
-
-inline double getPbcDistPoint(const double& x1, const double& x2, const double& axis_length) {
-    double dx = x1 - x2;
-    dx -= axis_length * std::round(dx / axis_length);
-    return dx;
-}
-
-inline double getDist(const double *this_pos, const double *other_pos, const SimParams2D& simparams) {
-    double dist_sq = 0.0;
-    double delta = 0.0;
-    for (int dim = 0; dim < simparams.N_dim; ++dim) {
-        delta = getPbcDistPoint(this_pos[dim], other_pos[dim], simparams.box_size[dim]);
-        dist_sq += delta * delta;
-    };
-    return std::sqrt(dist_sq);
-}
-
-inline double getVectLength(const std::vector<double>& vect, const SimParams2D& simparams) {
-    double vect_length_sq = 0.0;
-    for (int dim = 0; dim < simparams.N_dim; ++dim) {
-        vect_length_sq += vect[dim] * vect[dim];
-    }
-    return std::sqrt(vect_length_sq);
-}
-
-inline void setDistVect(std::vector<double>& dist_vect, const std::vector<double>& this_pos, const std::vector<double>& other_pos, const SimParams2D& simparams) {
-    for (int dim = 0; dim < simparams.N_dim; ++dim) {
-        dist_vect[dim] = getPbcDistPoint(this_pos[dim], other_pos[dim], static_cast<double>(simparams.box_size[dim]));
-    }
-}
-
-inline std::vector<double> getDistVect(const std::vector<double>& this_pos, const std::vector<double>& other_pos, const SimParams2D& simparams) {
-    std::vector<double> dist_vect(simparams.N_dim);
-    for (int dim = 0; dim < simparams.N_dim; ++dim) {
-        dist_vect[dim] = getPbcDistPoint(this_pos[dim], other_pos[dim], static_cast<double>(simparams.box_size[dim]));
-    }
-    return dist_vect;
-}
-
-inline double calcProjection(const std::vector<double> this_pos, const std::vector<double> segment_origin_pos, const std::vector<double> segment_vec, const double& segment_length, const SimParams2D& simparams) {
-    return (getPbcDistPoint(this_pos[0], segment_origin_pos[0], simparams.box_size[0]) * segment_vec[0] + getPbcDistPoint(this_pos[1], segment_origin_pos[1], simparams.box_size[1]) * segment_vec[1]) / segment_length;
-}
-
-std::vector<double> getCircleCoords(double cx, double cy, double radius, double n_vertices);
-std::ofstream createDpmLogFile(const std::string& file_path);
-std::ofstream createVertexLogFile(const std::string& file_path);
-std::ofstream createMacroLogFile(const std::string& file_path);
-
-
-
-void initDataFiles(std::string dir, SimParams2D& simparams);  // TODO CHANGE IT
-void writeToMacroLogFile(std::ofstream& macro_log, std::vector<DPM2D>& dpms, int step, SimParams2D& simparams, int precision, int console_log_freq);  // TODO CHANGE IT
-
-
-void writeMacroConsoleHeader();
-void tracerTest(std::string dir, int num_vertices);
-std::vector<double> generateLatticeCoordinates(int N, double lx, double ly);
-void verletStepDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step, double damping);
-void noseHooverVelocityVerletStepDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step, double& eta, double T_target, double Q, double damping);
-
-
-void logDpmList(int num_dpms, std::vector<DPM2D>& dpms, int step, int save_freq, int console_log_freq, std::ofstream& vertex_log, std::ofstream& dpm_log, std::ofstream& macro_log, std::ofstream& config_log, SimParams2D& simparams);  // TODO CHANGE IT
-
-
-double setLinearHarmonicForces(std::vector<double>& force, std::vector<double>& pos, std::vector<double>& distance_vector, int num_disks, SimParams2D& simparams, std::vector<double> radii_list);
-double adamMinimizeDiskForces(std::vector<double>& pos, SimParams2D& simparams, std::vector<double>& radii_list, int num_disks, int max_steps, double alpha, double beta1, double beta2, double epsilon);
-double adamMinimizeDpmForce(std::vector<DPM2D> dpms, SimParams2D& simparams, int max_steps, double alpha, double beta1, double beta2, double epsilon);
-void plateCompressionSweep(std::string dir_base, int num_vertices, int N_points);
-void dampDpms(std::vector<DPM2D>& dpms, double damping);
-
-
-std::ofstream createConfigLogFile(const std::string& file_path, SimParams2D& simparams);  // TODO CHANGE IT
-void writeToConfigLogFile(std::ofstream& config_log, SimParams2D& simparams, int step, int precision);  // TODO CHANGE IT
-
-PosRadius generateDiskPackCoords(int num_disks, std::vector<double> radii, std::vector<double> fraction, SimParams2D& simparams, double seed, double dr, double tol, double phi_target, double num_steps);
-std::vector<DPM2D> generateDpmsFromDiskPack(PosRadius& pos_rad, SimParams2D& simparams, double vertex_circumferencial_density, double radius_shrink_factor);
-void shiftDpmsToVelocity(std::vector<DPM2D>& dpms, double vx, double vy);
-void zeroDpmsAngularVelocity(std::vector<DPM2D>& dpms);
-
-
-void scaleDpmsToTemp(std::vector<DPM2D>& dpms, SimParams2D& simparams, double temp_target, double seed);  // TODO CHANGE IT
-void compressDpms(std::vector<DPM2D>& dpms, SimParams2D& simparams, double dr, int N_steps, double phi_target, double damping, int compress_every, std::string dir);  // TODO CHANGE IT
-
-
-// TODO CHANGE IT - all below
-int getLargestStepNumber(std::string csv_path);
-void readConfigFileAtStep(std::string config_path, SimParams2D& simparams, int step);
-int getNumberOfDpmsAtStep(std::string dpm_log_path, int step);
-void assignVertexDataToDpmAtStep(std::string vertex_log_path, int dpm_id, int step, std::vector<DPM2D>& dpms);
-void getForceParamsForDpmAtStep(std::string dpm_log_path, int dpm_id, int step, std::vector<DPM2D>& dpms, SimParams2D& simparams);
-std::vector<DPM2D> loadDpmData(std::string dir, int step);
 #endif // DPM_HPP

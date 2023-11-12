@@ -16,6 +16,8 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 
 # Automatically include all source files
 file(GLOB SOURCES "src/*.cpp")
+# Print all source files
+message(STATUS "SOURCES: ${SOURCES}")
 
 add_executable(dpm main.cpp ${SOURCES})
 
