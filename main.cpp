@@ -8,8 +8,32 @@
 #include <algorithm>
 
 #include "dpm.hpp"
+#include "sim.hpp"
+#include "disk.hpp"
+#include "routines.hpp"
+
+// TODO: hdf5 saving and loading
+// TODO: rescale units
 
 int main() {
+    double seed = 42;
+    double temp_target = 1.0;
+    int num_dpms = 10;
+    double phi_target = 0.7;
+
+    // define the simulation parameters
+    SimParams2D simparams = SimParams2D(20.0, 20.0, 1e-3, 1.0, 1.0, 100.0, 100.0, 100.0, 1.0);
+
+    // make the disk packing
+    Disks2D disks = packDisks2D_0Pressure(num_dpms, {1.0, 1.4}, {0.5, 0.5}, simparams, seed, 1000, 0.1, 1e-5, phi_target, 1000, 0.1);
+
+    // make the dpms
+    std::vector<DPM2D> dpms = generateDpmsFromDisks(disks, 2.0, 0.8);
+    scaleDpmsToTemp(dpms, temp_target, seed);
+
+    
+
+    // hdf5 saving and loading
 
     // int num_steps = 1000;
     // int save_freq = 100;

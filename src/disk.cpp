@@ -29,8 +29,10 @@ Disks2D::~Disks2D() {
 void Disks2D::setInteractionForceEnergy() {
     // loop over all particles
     for (int i = 0; i < this->n_particles; ++i) {
+        this->setPos_i(i);
         // loop over other particles
         for (int j = i + 1; j < this->n_particles; ++j) {
+            this->setPos_j(j);
             setDistVect(this->l_ij, this->pos_i, this->pos_j, this->simparams);
             double dist = getVectLength(this->l_ij, this->simparams);
             double magnitude = (dist - (this->sigma[i] + this->sigma[j]) / 2.0);
@@ -48,8 +50,10 @@ void Disks2D::setInteractionForceEnergy() {
 void Disks2D::setInteractionForceEnergyWCA() {
     // loop over all particles
     for (int i = 0; i < this->n_particles; ++i) {
+        this->setPos_i(i);
         // loop over other particles
         for (int j = i + 1; j < this->n_particles; ++j) {
+            this->setPos_j(j);
             setDistVect(this->l_ij, this->pos_i, this->pos_j, this->simparams);
             double dist = getVectLength(this->l_ij, this->simparams);
             double sigma_eff = (this->sigma[i] + this->sigma[j]) / 2.0;

@@ -193,6 +193,7 @@ void shiftDpmsToVelocity(std::vector<DPM2D>& dpms, double vx, double vy) {
     }
 }
 
+// TODO make this more general
 void zeroDpmsAngularVelocity(std::vector<DPM2D>& dpms) {
     // calculate average velocity
     for (int id = 0; id < dpms.size(); ++id) {
@@ -220,30 +221,30 @@ void scaleDpmsToTemp(std::vector<DPM2D>& dpms, double temp_target, double seed) 
         num_vertices += dpms[id].n_vertices * dpms[id].simparams.N_dim;
     }
     std::vector<double> rand_vel = generateRandomNormalVector(num_vertices, 0.0, 1.0, seed);
+    
     for (int id = 0; id < dpms.size(); ++id) {
         for (int i = 0; i < dpms[id].n_vertices; ++i) {
-            for (int dim = 0; dim < dpms[id].simparams.N_dim; ++i) {
-                dpms[id].vel_vertex[dpms[id].simparams.N_dim * i + dim] = rand_vel[dpms[id].simparams.N_dim * i + dim];
+            for (int dim = 0; dim < dpms[id].simparams.N_dim; ++dim) {
+                dpms[id].vel_vertex[i * dpms[id].simparams.N_dim + dim] = rand_vel[i * dpms[id].simparams.N_dim + dim];
             }
         }
     }
 
-    // remove the angular velocity
     zeroDpmsAngularVelocity(dpms);
-    // remove the center of mass velocity
     shiftDpmsToVelocity(dpms, 0.0, 0.0);
+
     // calculate the temperature
     double ke = 0.0;
+    num_vertices = 0;  // this can be simplified so we dont recalculate, but the num_vertices calculation would need to be changed above!
     for (int id = 0; id < dpms.size(); ++id) {
         dpms[id].calcKineticEnergies();
         ke += dpms[id].kin_eng;
+        num_vertices += dpms[id].n_vertices;
     }
     double temp = 2 * ke / (dpms[0].simparams.N_dim * num_vertices * dpms[0].simparams.kb);
     // scale the velocities
     double scale_factor = std::sqrt(temp_target / temp);
-    std::cout << scale_factor << std::endl;
-    std::cout << temp << std::endl;
-    std::cout << ke << std::endl;
+
     for (int id = 0; id < dpms.size(); ++id) {
         for (int i = 0; i < dpms[id].n_vertices; ++i) {
             for (int dim = 0; dim < dpms[id].simparams.N_dim; ++dim) {

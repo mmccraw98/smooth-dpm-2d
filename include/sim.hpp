@@ -82,14 +82,14 @@ inline double getVectLength(const std::vector<double>& vect, const SimParams2D& 
 
 inline void setDistVect(std::vector<double>& dist_vect, const std::vector<double>& this_pos, const std::vector<double>& other_pos, const SimParams2D& simparams) {
     for (int dim = 0; dim < simparams.N_dim; ++dim) {
-        dist_vect[dim] = getPbcDistPoint(this_pos[dim], other_pos[dim], static_cast<double>(simparams.box_size[dim]));
+        dist_vect[dim] = getPbcDistPoint(this_pos[dim], other_pos[dim], simparams.box_size[dim]);
     }
 }
 
 inline std::vector<double> getDistVect(const std::vector<double>& this_pos, const std::vector<double>& other_pos, const SimParams2D& simparams) {
     std::vector<double> dist_vect(simparams.N_dim);
     for (int dim = 0; dim < simparams.N_dim; ++dim) {
-        dist_vect[dim] = getPbcDistPoint(this_pos[dim], other_pos[dim], static_cast<double>(simparams.box_size[dim]));
+        dist_vect[dim] = getPbcDistPoint(this_pos[dim], other_pos[dim], simparams.box_size[dim]);
     }
     return dist_vect;
 }
