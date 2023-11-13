@@ -1,5 +1,5 @@
-#include <iostream>
 #include <cmath>
+#include <iostream>
 #include <vector>
 #include <fstream>
 #include <sstream>
@@ -7,19 +7,30 @@
 #include <random>
 #include <algorithm>
 
+#include "H5Cpp.h"
+
 #include "dpm.hpp"
 #include "sim.hpp"
 #include "disk.hpp"
 #include "routines.hpp"
+#include "fileio.hpp"
 
-// TODO: hdf5 saving and loading
+
+// TODO: hdf5 loading
+// TODO: stress / strain / bulk modulus, etc.
 // TODO: rescale units
+
 
 int main() {
     double seed = 42;
     double temp_target = 1.0;
     int num_dpms = 10;
     double phi_target = 0.7;
+
+    int save_every = 100;
+    int log_every = 1000;
+    bool save_vertex = true;
+    bool save_params = true;
 
     // define the simulation parameters
     SimParams2D simparams = SimParams2D(20.0, 20.0, 1e-3, 1.0, 1.0, 100.0, 100.0, 100.0, 1.0);
@@ -31,9 +42,33 @@ int main() {
     std::vector<DPM2D> dpms = generateDpmsFromDisks(disks, 2.0, 0.8);
     scaleDpmsToTemp(dpms, temp_target, seed);
 
-    
+    // create the file
+    H5::H5File dpm_data = createH5File("./data/test.h5");
 
-    // hdf5 saving and loading
+
+    int step = 0;
+    // run the dynamics
+    noseHooverVelocityVerletStepDpmList(dpms, temp_target);
+
+    double pot_eng = 0.0;
+    double kin_eng = 0.0;
+    double phi = 0.0;
+    int num_vertices = 0;
+    double press = 0.0;  // TODO calculate pressure
+
+    for (int id = 0; id < dpms.size(); ++id) {
+        pot_eng += dpms[id].pot_eng;
+        kin_eng += dpms[id].kin_eng;
+        phi += dpms[id].area;
+        num_vertices += dpms[id].n_vertices;
+    }
+    double temp = 2 * kin_eng / (dpms[0].simparams.N_dim * num_vertices * dpms[0].simparams.kb);
+
+    writeData(dpm_data, dpms, save_vertex, save_params, step, pot_eng, kin_eng, phi, temp, press, num_vertices);
+
+
+    // once done with simulation, close the file
+    dpm_data.close();
 
     // int num_steps = 1000;
     // int save_freq = 100;

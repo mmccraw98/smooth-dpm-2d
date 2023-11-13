@@ -81,29 +81,41 @@ class DPM2D {
 
 inline void DPM2D::verletPositionStep() {
     // update the positions
-    for (int i = 0; i < this->n_vertices; ++i) {
-        for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
+    for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
+        this->pos_dpm[dim] = 0.0;
+        for (int i = 0; i < this->n_vertices; ++i) {
             this->pos_vertex[this->simparams.N_dim * i + dim] += this->vel_vertex[this->simparams.N_dim * i + dim] * this->simparams.dt + 0.5 * this->force_vertex[this->simparams.N_dim * i + dim] * this->simparams.dt * this->simparams.dt / this->simparams.mass_vertex;
+            this->pos_dpm[dim] += this->pos_vertex[this->simparams.N_dim * i + dim];
         }
+        this->pos_dpm[dim] /= this->n_vertices;
     }
 }
 
 inline void DPM2D::verletVelocityStep() {
     // update the velocities and accelerations
-    for (int i = 0; i < this->n_vertices; ++i) {
-        for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
+    for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
+        this->vel_dpm[dim] = 0.0;
+        this->force_dpm[dim] = 0.0;
+        for (int i = 0; i < this->n_vertices; ++i) {
             this->vel_vertex[this->simparams.N_dim * i + dim] += 0.5 * this->simparams.dt * (this->force_vertex[this->simparams.N_dim * i + dim] / this->simparams.mass_vertex + this->acc_vertex[this->simparams.N_dim * i + dim]);
             this->acc_vertex[this->simparams.N_dim * i + dim] = this->force_vertex[this->simparams.N_dim * i + dim] / this->simparams.mass_vertex;
+            this->vel_dpm[dim] += this->vel_vertex[this->simparams.N_dim * i + dim];
+            this->force_dpm[dim] += this->force_vertex[this->simparams.N_dim * i + dim];
         }
+        this->vel_dpm[dim] /= this->n_vertices;
+        this->force_dpm[dim] /= this->n_vertices;
     }
 }
 
 inline void DPM2D::noseHooverVelocityVerletPositionStep() {
     // update the positions
-    for (int i = 0; i < this->n_vertices; ++i) {
-        for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
+    for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
+        this->pos_dpm[dim] = 0.0;
+        for (int i = 0; i < this->n_vertices; ++i) {
             this->pos_vertex[this->simparams.N_dim * i + dim] += this->vel_vertex[this->simparams.N_dim * i + dim] * this->simparams.dt + 0.5 * (this->force_vertex[this->simparams.N_dim * i + dim] / simparams.mass_vertex - this->simparams.eta * this->vel_vertex[this->simparams.N_dim * i + dim]) * this->simparams.dt * this->simparams.dt;
+            this->pos_dpm[dim] += this->pos_vertex[this->simparams.N_dim * i + dim];
         }
+        this->pos_dpm[dim] /= this->n_vertices;
     }
 }
 
@@ -121,13 +133,20 @@ inline void DPM2D::noseHooverVelocityVerletHalfVelocityStep(double& ke_half_sum,
 }
 
 inline void DPM2D::noseHooverVelocityVerletFullVelocityStep() {
-    for (int i = 0; i < this->n_vertices; ++i) {
-        for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
+    for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
+        this->vel_dpm[dim] = 0.0;
+        this->force_dpm[dim] = 0.0;
+        for (int i = 0; i < this->n_vertices; ++i) {
             // update the velocity using the half-step velocity (which is stored as the acceleration)
             this->vel_vertex[this->simparams.N_dim * i + dim] = (this->acc_vertex[this->simparams.N_dim * i + dim] + 0.5 * this->force_vertex[this->simparams.N_dim * i + dim] * this->simparams.dt / this->simparams.mass_vertex) / (1 + this->simparams.eta * this->simparams.dt / 2);
             // reset the acceleration using the full-step force (removes the half-step velocity from temporary storage here)
             this->acc_vertex[this->simparams.N_dim * i + dim] = this->force_vertex[this->simparams.N_dim * i + dim] / this->simparams.mass_vertex;
+            // update the dpm velocity and force
+            this->vel_dpm[dim] += this->vel_vertex[this->simparams.N_dim * i + dim];
+            this->force_dpm[dim] += this->force_vertex[this->simparams.N_dim * i + dim];
         }
+        this->vel_dpm[dim] /= this->n_vertices;
+        this->force_dpm[dim] /= this->n_vertices;
     }
 }
 
