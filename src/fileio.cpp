@@ -35,6 +35,13 @@ H5::H5File createH5File(const std::string& path) {
     }
 
     H5::H5File dpm_data(path, H5F_ACC_TRUNC);
+
+    // make an attribute that stores the latest step
+    createAndWriteAttribute(dpm_data, "latest_step", 0, H5::PredType::NATIVE_INT);
+
+    // make an attribute that stores the step of the latest sim params update
+    createAndWriteAttribute(dpm_data, "latest_sim_params_update_step", 0, H5::PredType::NATIVE_INT);
+
     return dpm_data;
 }
 
@@ -60,6 +67,7 @@ void writeSimParams(H5::Group& timestepGroup, const std::vector<DPM2D>& dpms) {
     createAndWriteAttribute(timestepGroup, "dt", dpms[0].simparams.dt, H5::PredType::NATIVE_DOUBLE);
     createAndWriteAttribute(timestepGroup, "k", dpms[0].simparams.k, H5::PredType::NATIVE_DOUBLE);
     createAndWriteAttribute(timestepGroup, "Q", dpms[0].simparams.Q, H5::PredType::NATIVE_DOUBLE);
+    createAndWriteAttribute(timestepGroup, "damping_coeff", dpms[0].simparams.damping_coeff, H5::PredType::NATIVE_DOUBLE);
 
     // write the potentially dpm specific parameters
     const hsize_t NUM_DPMS = dpms.size();
@@ -72,7 +80,7 @@ void writeSimParams(H5::Group& timestepGroup, const std::vector<DPM2D>& dpms) {
     double dpm_params_log[NUM_DPMS][DATA_PER_DPM];
     for (int i = 0; i < dpms.size(); ++i) {
         dpm_params_log[i][0] = dpms[i].simparams.k;
-        dpm_params_log[i][1] = dpms[i].simparams.sigma;
+        dpm_params_log[i][1] = dpms[i].sigma;
         dpm_params_log[i][2] = dpms[i].simparams.k_l;
         dpm_params_log[i][3] = dpms[i].simparams.k_b;
         dpm_params_log[i][4] = dpms[i].simparams.k_a;
@@ -146,6 +154,9 @@ void writeData(H5::H5File& dpm_data, const std::vector<DPM2D>& dpms, bool save_v
     // write the simulation parameters
     if (save_params) {
         writeSimParams(timestepGroup, dpms);
+        // update the latest sim params update step
+        H5::Attribute latest_sim_params_update_step = dpm_data.openAttribute("latest_sim_params_update_step");
+        latest_sim_params_update_step.write(H5::PredType::NATIVE_INT, &step);
     }
 
     // write the dpm data
@@ -154,6 +165,9 @@ void writeData(H5::H5File& dpm_data, const std::vector<DPM2D>& dpms, bool save_v
     // write the vertex data
     if (save_vertex) {
         writeVertexLevelData(timestepGroup, dpms, num_vertices);
+        // update the latest step
+        H5::Attribute latest_step = dpm_data.openAttribute("latest_step");
+        latest_step.write(H5::PredType::NATIVE_INT, &step);
     }
 }
 
@@ -205,5 +219,113 @@ void logDpms(std::vector<DPM2D>& dpms, H5::H5File& dpm_data, int step, int log_e
 
     if (step % log_every == 0) {
         writeData(dpm_data, dpms, save_vertex, save_params, step, pot_eng, kin_eng, phi, temp, press, num_vertices);
+    }
+}
+
+void readSimParams(H5::H5File& dpm_data, int& latest_sim_params_update_step, SimParams2D& simparams, int& num_dpms) {
+    // get the relevant group
+    std::string groupName = "step_" + std::to_string(latest_sim_params_update_step);
+    H5::Group timestepGroup = dpm_data.openGroup(groupName);
+    
+    // define the simparams object
+    readAttribute(timestepGroup, "N_dim", simparams.N_dim);
+    std::vector<std::string> names = {"Lx", "Ly", "Lz"};  // TODO maybe move this to be a simparams default?
+    for (int i = 0; i < simparams.N_dim; ++i) {
+        readAttribute(timestepGroup, names[i], simparams.box_size[i]);
+    }
+    readAttribute(timestepGroup, "dt", simparams.dt);
+    readAttribute(timestepGroup, "kb", simparams.kb);
+    readAttribute(timestepGroup, "k", simparams.k);
+    readAttribute(timestepGroup, "Q", simparams.Q);
+    readAttribute(timestepGroup, "damping_coeff", simparams.damping_coeff);
+    readAttribute(timestepGroup, "num_dpms", num_dpms);
+}
+
+
+void readDpmData(H5::H5File& dpm_data, const int desired_step, std::vector<DPM2D>& dpms, const int latest_sim_params_update_step, SimParams2D& simparams) {
+    // read the number of dpms and vertices
+    std::string dpm_groupName = "step_" + std::to_string(desired_step);
+    H5::Group dpm_timestepGroup = dpm_data.openGroup(dpm_groupName);
+    // get the eta value
+    readAttribute(dpm_timestepGroup, "eta", simparams.eta);
+
+    H5::DataSet dpm_dataset = dpm_timestepGroup.openDataSet("dpm_data");
+    
+    // create the dataspace to store the dpm values
+    H5::DataSpace dataspace = dpm_dataset.getSpace();
+    int ndims = dataspace.getSimpleExtentNdims();
+    hsize_t dims[ndims];
+    dataspace.getSimpleExtentDims(dims);
+    double dpm_data_log[dims[0]][dims[1]];
+    dpm_dataset.read(dpm_data_log, H5::PredType::NATIVE_DOUBLE);
+
+    // N_vertices x data_per_vertex
+
+    // likewise for the force constants in the sim params
+    std::string simparams_groupName = "step_" + std::to_string(latest_sim_params_update_step);
+    H5::Group simparams_timestepGroup = dpm_data.openGroup(simparams_groupName);
+
+    H5::DataSet simparams_dataset = simparams_timestepGroup.openDataSet("dpm_params");
+    int ndims_simparams = simparams_dataset.getSpace().getSimpleExtentNdims();
+    hsize_t dims_simparams[ndims_simparams];
+    simparams_dataset.getSpace().getSimpleExtentDims(dims_simparams);
+    double simparams_log[dims_simparams[0]][dims_simparams[1]];
+    simparams_dataset.read(simparams_log, H5::PredType::NATIVE_DOUBLE);
+
+    // N_dpm x data_per_dpm
+
+    // iterate through the data log and create the dpms
+    int count = 0;
+    for (int i = 0; i < dims_simparams[0]; ++i) {  // loop over dpms
+        int num_vertices = simparams_log[i][3 * simparams.N_dim + 3];
+        // create the dpm
+        DPM2D dpm = DPM2D(0.0, 0.0, 1.0, num_vertices, simparams);
+        for (int j = 0; j < num_vertices; ++j) {  // loop over vertices
+            for (int dim = 0; dim < simparams.N_dim; ++dim) {
+                dpm.pos_vertex[j * simparams.N_dim + dim] = dpm_data_log[count][dim];
+                dpm.vel_vertex[j * simparams.N_dim + dim] = dpm_data_log[count][simparams.N_dim + dim];
+                dpm.force_vertex[j * simparams.N_dim + dim] = dpm_data_log[count][2 * simparams.N_dim + dim];
+            }
+            dpm.simparams.sigma = simparams_log[i][1];
+            dpm.sigma = simparams_log[i][1];
+            dpm.simparams.k_l = simparams_log[i][2];
+            dpm.simparams.k_b = simparams_log[i][3];
+            dpm.simparams.k_a = simparams_log[i][4];
+
+            dpm.A_0 = simparams_log[i][5];
+            dpm.l_0 = simparams_log[i][6];
+            dpm.theta_0 = simparams_log[i][7];
+
+            dpm.simparams.mass_vertex = simparams_log[i][8];
+            dpm.simparams.mass_dpm = simparams_log[i][9];
+            
+            count += 1;
+        }
+        dpms.push_back(dpm);
+    }
+}
+
+
+void readDpmDataFromStep(std::string dpm_data_path, int& desired_step, std::vector<DPM2D>& dpms, SimParams2D& simparams) {
+    int latest_sim_params_update_step;
+
+    try {
+        H5::H5File dpm_data(dpm_data_path, H5F_ACC_RDONLY);
+
+        // get the latest step that the simparams were updated
+        readAttribute(dpm_data, "latest_sim_params_update_step", latest_sim_params_update_step);
+        // check if desired_step is -1, if so, just get the attribute of the latest step
+        if (desired_step == -1) {
+            readAttribute(dpm_data, "latest_step", desired_step);
+        }
+        
+        // read the sim params and define the number of dpms
+        int num_dpms;
+        readSimParams(dpm_data, latest_sim_params_update_step, simparams, num_dpms);
+        readDpmData(dpm_data, desired_step, dpms, latest_sim_params_update_step, simparams);
+
+        dpm_data.close();
+    } catch (const H5::Exception& e) {
+        std::cerr << e.getCDetailMsg() << std::endl;
     }
 }

@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <random>
 #include <algorithm>
+#include <regex>
+#include <string>
 
 #include "H5Cpp.h"
 
@@ -16,53 +18,65 @@
 #include "fileio.hpp"
 
 
+// TODO: verify that the sigma for 
 // TODO: hdf5 loading
+// TODO: move to thrust cuda
+// TODO: all dpm vertex data stored in one vector - get_ functions should return pointers to the data
+// TODO: define neighbor list - redefine if max displacement > sigma or something
 // TODO: stress / strain / bulk modulus, etc.
 // TODO: rescale units
+// TODO: save in logarithmic timescales (like francesco)
 
 
 int main() {
-    double seed = 42;
-    double temp_target = 1.0;
-    int num_dpms = 10;
-    double phi_target = 0.7;
-    int num_steps = 10000;
 
-    int log_every = 100;
-    int console_log_every = 1000;
-    int rewrite_header_every = 10000;
-    bool save_vertex = true;
-    bool save_params = true;
+    SimParams2D simparams(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    std::vector<DPM2D> dpms;
+    int step = -1;  // this will be overwritten to restart from the latest step
+    readDpmDataFromStep("./data/test.h5", step, dpms, simparams);
 
-    // define the simulation parameters
-    SimParams2D simparams = SimParams2D(20.0, 20.0, 1e-3, 1.0, 1.0, 100.0, 100.0, 100.0, 1.0);
+    // double seed = 42;
+    // double temp_target = 1.0;
+    // int num_dpms = 10;
+    // double phi_target = 0.7;
+    // int num_steps = 10000;
 
-    // make the disk packing
-    Disks2D disks = packDisks2D_0Pressure(num_dpms, {1.0, 1.4}, {0.5, 0.5}, simparams, seed, 1000, 0.1, 1e-5, phi_target, 1000, 0.1);
+    // int log_every = 100;
+    // int console_log_every = 1000;
+    // int rewrite_header_every = 10000;
+    // bool save_vertex = true;
+    // bool save_params = true;
 
-    // make the dpms
-    std::vector<DPM2D> dpms = generateDpmsFromDisks(disks, 2.0, 0.8);
-    scaleDpmsToTemp(dpms, temp_target, seed);
+    // // define the simulation parameters
+    // SimParams2D simparams = SimParams2D(20.0, 20.0, 1e-3, 1.0, 1.0, 100.0, 100.0, 100.0, 1.0);
 
-    // create the file
-    H5::H5File dpm_data = createH5File("./data/test.h5");
+    // // make the disk packing
+    // Disks2D disks = packDisks2D_0Pressure(num_dpms, {1.0, 1.4}, {0.5, 0.5}, simparams, seed, 1000, 0.1, 1e-5, phi_target, 1000, 0.1);
 
-    // KINETIC ENERGY IS NOT BEING UPDATED CORRECTLY
+    // // make the dpms
+    // std::vector<DPM2D> dpms = generateDpmsFromDisks(disks, 2.0, 0.8);
+    // scaleDpmsToTemp(dpms, temp_target, seed);
 
-    // run the dynamics
-    for (int step = 0; step < num_steps; ++step) {
-        noseHooverVelocityVerletStepDpmList(dpms, temp_target);
+    // // create the file
+    // H5::H5File dpm_data = createH5File("./data/test.h5");
 
-        if ((step % log_every == 0) || (step % console_log_every == 0) || (step % rewrite_header_every == 0)) {
-            logDpms(dpms, dpm_data, step, log_every, console_log_every, rewrite_header_every, save_vertex, save_params);
-            if (step > 0) {
-                save_params = false;
-            }
-        }
-    }
+    // // run the dynamics
+    // for (int step = 0; step < num_steps; ++step) {
+    //     noseHooverVelocityVerletStepDpmList(dpms, temp_target);
 
-    // once done with simulation, close the file
-    dpm_data.close();
+    //     if ((step % log_every == 0) || (step % console_log_every == 0) || (step % rewrite_header_every == 0)) {
+    //         logDpms(dpms, dpm_data, step, log_every, console_log_every, rewrite_header_every, save_vertex, save_params);
+    //         if (step > 0) {
+    //             save_params = false;
+    //         }
+    //     }
+    // }
+
+    // // once done with simulation, close the file
+    // dpm_data.close();
+
+
+
 
     // int num_steps = 1000;
     // int save_freq = 100;
