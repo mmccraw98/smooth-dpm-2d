@@ -136,6 +136,7 @@ inline void DPM2D::noseHooverVelocityVerletFullVelocityStep() {
     for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
         this->vel_dpm[dim] = 0.0;
         this->force_dpm[dim] = 0.0;
+        this->kin_eng = 0.0;
         for (int i = 0; i < this->n_vertices; ++i) {
             // update the velocity using the half-step velocity (which is stored as the acceleration)
             this->vel_vertex[this->simparams.N_dim * i + dim] = (this->acc_vertex[this->simparams.N_dim * i + dim] + 0.5 * this->force_vertex[this->simparams.N_dim * i + dim] * this->simparams.dt / this->simparams.mass_vertex) / (1 + this->simparams.eta * this->simparams.dt / 2);
@@ -144,6 +145,7 @@ inline void DPM2D::noseHooverVelocityVerletFullVelocityStep() {
             // update the dpm velocity and force
             this->vel_dpm[dim] += this->vel_vertex[this->simparams.N_dim * i + dim];
             this->force_dpm[dim] += this->force_vertex[this->simparams.N_dim * i + dim];
+            this->kin_eng += this->vel_vertex[this->simparams.N_dim * i + dim] * this->vel_vertex[this->simparams.N_dim * i + dim] * this->simparams.mass_vertex / 2;
         }
         this->vel_dpm[dim] /= this->n_vertices;
         this->force_dpm[dim] /= this->n_vertices;

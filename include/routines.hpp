@@ -10,6 +10,7 @@
 #include "sim.hpp"
 #include "dpm.hpp"
 #include "misc.hpp"
+#include "fileio.hpp"
 
 // ------------------------------------------------------------------------------------------------------------------------------------------ //
 // ---------------------------------------------------------- Disk Functions ---------------------------------------------------------------- //
@@ -28,6 +29,7 @@ void shiftDpmsToVelocity(std::vector<DPM2D>& dpms, double vx, double vy);
 void zeroDpmsAngularVelocity(std::vector<DPM2D>& dpms);
 void scaleDpmsToTemp(std::vector<DPM2D>& dpms, double temp_target, double seed);
 void verletStepDpmList(std::vector<DPM2D>& dpms);
+void noseHooverVelocityVerletStepDpmList(std::vector<DPM2D>& dpms, double T_target);
 void compressDpmsNve(std::vector<DPM2D>& dpms, int max_steps, double phi_target, int compress_every, double compression_increment);
 
 #endif // ROUTINES_HPP

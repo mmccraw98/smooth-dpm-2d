@@ -26,9 +26,11 @@ int main() {
     double temp_target = 1.0;
     int num_dpms = 10;
     double phi_target = 0.7;
+    int num_steps = 10000;
 
-    int save_every = 100;
-    int log_every = 1000;
+    int log_every = 100;
+    int console_log_every = 1000;
+    int rewrite_header_every = 10000;
     bool save_vertex = true;
     bool save_params = true;
 
@@ -45,27 +47,19 @@ int main() {
     // create the file
     H5::H5File dpm_data = createH5File("./data/test.h5");
 
+    // KINETIC ENERGY IS NOT BEING UPDATED CORRECTLY
 
-    int step = 0;
     // run the dynamics
-    noseHooverVelocityVerletStepDpmList(dpms, temp_target);
+    for (int step = 0; step < num_steps; ++step) {
+        noseHooverVelocityVerletStepDpmList(dpms, temp_target);
 
-    double pot_eng = 0.0;
-    double kin_eng = 0.0;
-    double phi = 0.0;
-    int num_vertices = 0;
-    double press = 0.0;  // TODO calculate pressure
-
-    for (int id = 0; id < dpms.size(); ++id) {
-        pot_eng += dpms[id].pot_eng;
-        kin_eng += dpms[id].kin_eng;
-        phi += dpms[id].area;
-        num_vertices += dpms[id].n_vertices;
+        if ((step % log_every == 0) || (step % console_log_every == 0) || (step % rewrite_header_every == 0)) {
+            logDpms(dpms, dpm_data, step, log_every, console_log_every, rewrite_header_every, save_vertex, save_params);
+            if (step > 0) {
+                save_params = false;
+            }
+        }
     }
-    double temp = 2 * kin_eng / (dpms[0].simparams.N_dim * num_vertices * dpms[0].simparams.kb);
-
-    writeData(dpm_data, dpms, save_vertex, save_params, step, pot_eng, kin_eng, phi, temp, press, num_vertices);
-
 
     // once done with simulation, close the file
     dpm_data.close();

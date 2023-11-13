@@ -30,4 +30,7 @@ void writeSimParams(H5::Group& timestepGroup, const std::vector<DPM2D>& dpms);
 void writeDpmLevelData(H5::Group& timestepGroup, const std::vector<DPM2D>& dpms);
 void writeVertexLevelData(H5::Group& timestepGroup, const std::vector<DPM2D>& dpms, int num_vertices);
 void writeData(H5::H5File& dpm_data, const std::vector<DPM2D>& dpms, bool save_vertex, bool save_params, int step, double pot_eng, double kin_eng, double phi, double temp, double press, int num_vertices);
+void writeMacroConsoleHeader();
+void writeMacroConsoleLine(int step, std::vector<DPM2D>& dpms, double pe, double ke, double phi, double temp);
+void logDpms(std::vector<DPM2D>& dpms, H5::H5File& dpm_data, int step, int log_every, int console_log_every, int rewrite_header_every, bool save_vertex, bool save_params);
 #endif // FILEIO_HPP

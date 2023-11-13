@@ -6,18 +6,6 @@
 
 #include "misc.hpp"
 
-void writeMacroConsoleHeader() {  // TODO make this more general
-    std::cout << std::string(12 * 8 + 6, '_') << std::endl;
-    std::cout << std::setw(12) << "step" << " | " 
-              << std::setw(12) << "time" << " | " 
-              << std::setw(12) << "pe" << " | " 
-              << std::setw(12) << "ke" << " | " 
-              << std::setw(12) << "te" << " | "
-              << std::setw(12) << "phi" << " | " 
-              << std::setw(12) << "temp" << "\n";
-    std::cout << std::string(12 * 8 + 6, '_') << std::endl;
-}
-
 std::vector<double> getCircleCoords(double cx, double cy, double radius, double n_vertices) {
     // reserve a vector of size 2*n_vertices and fill it with the x and y coordinates of the vertices
     std::vector<double> coords(2*n_vertices);

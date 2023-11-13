@@ -147,7 +147,6 @@ void DPM2D::setBondBendStretchForcesEnergies(const int i, const int j, const int
 void DPM2D::innerDpmForceRoutine() {
     // reset the forces and energies
     this->pot_eng = 0.0;
-    this->kin_eng = 0.0;
     std::fill(this->force_dpm.begin(), this->force_dpm.end(), 0.0);
     std::fill(this->force_vertex.begin(), this->force_vertex.end(), 0.0);
 

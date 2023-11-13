@@ -156,3 +156,54 @@ void writeData(H5::H5File& dpm_data, const std::vector<DPM2D>& dpms, bool save_v
         writeVertexLevelData(timestepGroup, dpms, num_vertices);
     }
 }
+
+
+void writeMacroConsoleHeader() {  // TODO make this more general
+    std::cout << std::string(12 * 8 + 6, '_') << std::endl;
+    std::cout << std::setw(12) << "step" << " | " 
+              << std::setw(12) << "time" << " | " 
+              << std::setw(12) << "pe" << " | " 
+              << std::setw(12) << "ke" << " | " 
+              << std::setw(12) << "te" << " | "
+              << std::setw(12) << "phi" << " | " 
+              << std::setw(12) << "temp" << "\n";
+    std::cout << std::string(12 * 8 + 6, '_') << std::endl;
+}
+
+void writeMacroConsoleLine(int step, std::vector<DPM2D>& dpms, double pe, double ke, double phi, double temp) {
+    std::cout << std::setw(12) << std::fixed << std::setprecision(3) << step << " | " 
+    << std::setw(12) << std::scientific << std::setprecision(3) << (dpms[0].simparams.dt * step) << " | " 
+    << std::setw(12) << std::scientific << std::setprecision(3) << pe << " | " 
+    << std::setw(12) << std::scientific << std::setprecision(3) << ke << " | " 
+    << std::setw(12) << std::scientific << std::setprecision(3) << ke + pe << " | " 
+    << std::setw(12) << std::scientific << std::setprecision(3) << phi << " | " 
+    << std::setw(12) << std::scientific << std::setprecision(3) << temp << "\n";
+}
+
+void logDpms(std::vector<DPM2D>& dpms, H5::H5File& dpm_data, int step, int log_every, int console_log_every, int rewrite_header_every, bool save_vertex, bool save_params) {
+    // calculate the macroscopic variables
+    double pot_eng = 0.0;
+    double kin_eng = 0.0;
+    double phi = 0.0;
+    int num_vertices = 0;
+    double press = 0.0;  // TODO calculate pressure
+    for (int id = 0; id < dpms.size(); ++id) {
+        pot_eng += dpms[id].pot_eng;
+        kin_eng += dpms[id].kin_eng;
+        phi += dpms[id].area;
+        num_vertices += dpms[id].n_vertices;
+    }
+    double temp = 2 * kin_eng / (dpms[0].simparams.N_dim * num_vertices * dpms[0].simparams.kb);
+
+    if (step % rewrite_header_every == 0) {
+        writeMacroConsoleHeader();
+    }
+
+    if (step % console_log_every == 0) {
+        writeMacroConsoleLine(step, dpms, pot_eng, kin_eng, phi, temp);
+    }
+
+    if (step % log_every == 0) {
+        writeData(dpm_data, dpms, save_vertex, save_params, step, pot_eng, kin_eng, phi, temp, press, num_vertices);
+    }
+}
