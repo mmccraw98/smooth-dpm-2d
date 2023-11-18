@@ -157,7 +157,7 @@ std::vector<DPM2D> generateDpmsFromDisks(Disks2D& disks, double vertex_circumfer
     std::vector<DPM2D> dpms;
     for (int i = 0; i < disks.n_particles; ++i) {
         // TODO - fix shrink factor so that we dont need the shrink radius - i think this is indicative of an issue in the dpm geometry calculation
-        double radius = disks.sigma[i] / 2.0 * radius_shrink_factor;  // to be really sure there are no overlaps
+        double radius = disks.sigma[i] / 2.0 * radius_shrink_factor;
         int num_vertices = std::round(vertex_circumferencial_density * 2 * M_PI * radius);
         dpms.push_back(DPM2D(disks.pos[2 * i], disks.pos[2 * i + 1], radius, num_vertices, disks.simparams, 2.0, 0.0, 0.0, 0.0, 0.0));
     }

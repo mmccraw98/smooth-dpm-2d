@@ -18,7 +18,8 @@
 #include "fileio.hpp"
 
 
-// TODO: verify that the sigma for 
+// TODO: pack to fraction with disks then convert to dpms and measure phi - it should be the same but it is most likely not!
+// TODO: verify sigma vertex is constant for all dpms
 // TODO: hdf5 loading
 // TODO: move to thrust cuda
 // TODO: all dpm vertex data stored in one vector - get_ functions should return pointers to the data
@@ -30,35 +31,54 @@
 
 int main() {
 
-    SimParams2D simparams(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-    std::vector<DPM2D> dpms;
-    int step = -1;  // this will be overwritten to restart from the latest step
-    readDpmDataFromStep("./data/test.h5", step, dpms, simparams);
+    // SimParams2D simparams(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    // std::vector<DPM2D> dpms;
+    // int step = -1;  // this will be overwritten to restart from the latest step
+    // readDpmDataFromStep("./data/test.h5", step, dpms, simparams);
 
-    // double seed = 42;
-    // double temp_target = 1.0;
-    // int num_dpms = 10;
-    // double phi_target = 0.7;
-    // int num_steps = 10000;
+    double seed = 42;
+    double temp_target = 1e-3;
+    int num_dpms = 100;
+    double phi_target = 0.7;
+    int num_steps = 1000;
 
-    // int log_every = 100;
-    // int console_log_every = 1000;
-    // int rewrite_header_every = 10000;
-    // bool save_vertex = true;
-    // bool save_params = true;
+    int log_every = 100;
+    int console_log_every = 100;
+    int rewrite_header_every = 10000;
+    bool save_vertex = true;
+    bool save_params = true;
 
-    // // define the simulation parameters
-    // SimParams2D simparams = SimParams2D(20.0, 20.0, 1e-3, 1.0, 1.0, 100.0, 100.0, 100.0, 1.0);
+    // define the simulation parameters
+    SimParams2D simparams = SimParams2D(20.0, 20.0, 1e-3, 1.0, 1.0, 100.0, 100.0, 100.0, 1.0);
 
-    // // make the disk packing
-    // Disks2D disks = packDisks2D_0Pressure(num_dpms, {1.0, 1.4}, {0.5, 0.5}, simparams, seed, 1000, 0.1, 1e-5, phi_target, 1000, 0.1);
+    // make the disk packing
+    Disks2D disks = packDisks2D_0Pressure(num_dpms, {1.0, 1.4}, {0.5, 0.5}, simparams, seed, 1000000, 0.0001, 1e-5, phi_target, 10000, 0.1);
 
-    // // make the dpms
-    // std::vector<DPM2D> dpms = generateDpmsFromDisks(disks, 2.0, 0.8);
-    // scaleDpmsToTemp(dpms, temp_target, seed);
+    double area = 0.0;
+    for (int i = 0; i < disks.sigma.size(); ++i) {
+        area += disks.sigma[i] * disks.sigma[i] * M_PI / 4.0;
+    }
+    area /= (simparams.box_size[0] * simparams.box_size[1]);
+    std::cout << "phi: " << area << std::endl;
+
+    // make the dpms
+    std::vector<DPM2D> dpms = generateDpmsFromDisks(disks, 5.0, 0.92);
+    scaleDpmsToTemp(dpms, temp_target, seed);
+
+    // WHEN MAKING DPMS FROM CIRCULAR COORDS - DECREASE THE RADIUS OF THE CIRCLE BY SIGMA / 2 THEN ADD THE VERTICES
+    
+    // fix the vertex size, vary the number of vertices
+    area = 0.0;
+    for (int i = 0; i < dpms.size(); ++i) {
+        dpms[i].calcAreaWithCorrection();
+        area += dpms[i].area;
+    }
+    area /= (simparams.box_size[0] * simparams.box_size[1]);
+    std::cout << "phi: " << area << std::endl;
+
 
     // // create the file
-    // H5::H5File dpm_data = createH5File("./data/test.h5");
+    // H5::H5File dpm_data = createH5File("./data/test2.h5");
 
     // // run the dynamics
     // for (int step = 0; step < num_steps; ++step) {

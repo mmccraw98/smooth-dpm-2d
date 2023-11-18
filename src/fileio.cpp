@@ -204,6 +204,7 @@ void logDpms(std::vector<DPM2D>& dpms, H5::H5File& dpm_data, int step, int log_e
     for (int id = 0; id < dpms.size(); ++id) {
         pot_eng += dpms[id].pot_eng;
         kin_eng += dpms[id].kin_eng;
+        dpms[id].calcAreaWithCorrection();
         phi += dpms[id].area;
         num_vertices += dpms[id].n_vertices;
     }

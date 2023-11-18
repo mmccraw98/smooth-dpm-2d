@@ -65,6 +65,7 @@ class DPM2D {
         void setParticleVertexForceEnergyWCA(DPM2D& other_dpm, int other_vertex_i);
         void setParticleSegmentForceEnergyWCA(DPM2D& other_dpm, int other_vertex_i);
         void setInteractionForceEnergy(DPM2D& other_dpm);
+        void calcAreaWithCorrection();
 
 
         // Default Constructor

@@ -42,7 +42,6 @@ DPM2D::DPM2D(double cx, double cy, double radius, double n_vertices, SimParams2D
     this->l_0 = this->perimeter / this->n_vertices;
     this->theta_0 = 2 * M_PI / this->n_vertices;
 
-
     // set the sigma
     this->sigma = this->l_0 / length_diam_ratio;
 
@@ -215,8 +214,43 @@ void DPM2D::calcBondLengthsAnglesAreaPerimeter() {
         this->bond_angles[i] = std::acos(C_ki / std::sqrt(C_ii * C_kk));
 
         // increment the area and perimeter
-        this->area += (this->pos_i[0] * this->pos_k[1] - this->pos_k[0] * this->pos_i[1]) / 2.0;
+        this->area += (this->pos_i[0] * this->pos_k[1] - this->pos_k[0] * this->pos_i[1]) / 2.0;  // polygon area component
         this->perimeter += this->bond_lengths[i];
+    }
+}
+
+void DPM2D::calcAreaWithCorrection() {
+    // reset the area and perimeter
+    this->area = 0.0;
+    // loop over all vertices
+    for (int i = 0; i < this->n_vertices; ++i) {
+        // set the next and previous vertices
+        int k = this->getNextVertex(i);
+        int j = this->getPrevVertex(i);
+
+        this->setPos_i(i);
+        this->setPos_j(j);
+        this->setPos_k(k);
+
+        // calculate the bond length between i and j (update the bond_lengths vector at i)
+        setDistVect(this->l_ij, this->pos_i, this->pos_j, this->simparams);
+        this->bond_lengths[i] = getVectLength(this->l_ij, this->simparams);
+
+        // calculate the bond length between i and k - this is doubly innefficient, but better than recalculating the distances for each force
+        setDistVect(this->l_ki, this->pos_k, this->pos_i, this->simparams);
+
+        // increment the area due to the perimeter
+        this->area += (this->pos_i[0] * this->pos_k[1] - this->pos_k[0] * this->pos_i[1]) / 2.0;
+
+        double dot_prod = getDotProd(this->l_ij, this->l_ki, this->simparams);
+        double det = this->l_ij[0] * this->l_ki[1] - this->l_ij[1] * this->l_ki[0];
+        double signed_angle = std::atan2(det, dot_prod);
+
+        // increment the area due to the fraction of the vertex
+        this->area += this->sigma * this->sigma * (signed_angle / (2 * M_PI));
+
+        // increment the area due to the fraction of the segment
+        this->area += this->sigma / 2 * this->bond_lengths[i];  // half-rectangle area component TODO - MAYBE INCREASE THIS FOR WCA 2^(1/6) TERM
     }
 }
 
