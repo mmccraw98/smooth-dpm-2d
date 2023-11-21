@@ -3,6 +3,7 @@
 
 #include "disk.hpp"
 #include "sim.hpp"
+#include "misc.hpp"
 
 Disks2D::Disks2D(int n_particles, SimParams2D& simparams) : simparams(simparams) {
     // Default Constructor
@@ -83,7 +84,7 @@ void Disks2D::verletStep(int step, double damping) {
     this->verletVelocityStep();
 }
 
-void Disks2D::noseHooverVelocityVerletStepDpmList(int step, double T_target, double damping) {
+void Disks2D::noseHooverVelocityVerletStepList(int step, double T_target, double damping) {
     double eta_half = 0.0;
     double ke_half_sum = 0.0;
     double ke_sum = 0.0;
@@ -110,4 +111,53 @@ void Disks2D::noseHooverVelocityVerletStepDpmList(int step, double T_target, dou
 
     // update the velocities and reset the acceleration using the force
     this->noseHooverVelocityVerletFullVelocityStep();
+}
+
+void Disks2D::shiftToVelocityMean(double vx, double vy) {
+    double vx_mean = 0.0;
+    double vy_mean = 0.0;
+    for (int i = 0; i < this->n_particles; ++i) {
+        vx_mean += this->vel[this->simparams.N_dim * i];
+        vy_mean += this->vel[this->simparams.N_dim * i + 1];
+    }
+    vx_mean /= this->n_particles;
+    vy_mean /= this->n_particles;
+
+    for (int i = 0; i < this->n_particles; ++i) {
+        this->vel[this->simparams.N_dim * i] -= vx_mean - vx;
+        this->vel[this->simparams.N_dim * i + 1] -= vy_mean - vy;
+    }
+}
+
+void Disks2D::scaleVelocitiesToTemp(double T_target, double seed) {
+    // randomly assign velocities
+
+    std::vector<double> rand_vel = generateRandomNormalVector(this->n_particles * this->simparams.N_dim, 0.0, 1.0, seed);
+    
+    // assign the velocities
+    for (int i = 0; i < this->n_particles; ++i) {
+        for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
+            this->vel[this->simparams.N_dim * i + dim] = rand_vel[this->simparams.N_dim * i + dim];
+        }
+    }
+
+    // zero the center of mass velocity
+    this->shiftToVelocityMean(0.0, 0.0);
+
+    // calculate the temperature
+    double ke = 0.0;
+    for (int i = 0; i < this->n_particles; ++i) {
+        for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
+            ke += this->vel[this->simparams.N_dim * i + dim] * this->vel[this->simparams.N_dim * i + dim] * this->simparams.mass_vertex / 2;
+        }
+    }
+    double temp = 2 * ke / (this->simparams.N_dim * this->n_particles * this->simparams.kb);
+    // scale the velocities
+    double scale_factor = std::sqrt(T_target / temp);
+
+    for (int i = 0; i < this->n_particles; ++i) {
+        for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
+            this->vel[this->simparams.N_dim * i + dim] *= scale_factor;
+        }
+    }
 }

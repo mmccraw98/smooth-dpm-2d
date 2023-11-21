@@ -35,7 +35,9 @@ class Disks2D {
         void setInteractionForceEnergy();
         void setInteractionForceEnergyWCA();
         void verletStep(int step, double damping);
-        void noseHooverVelocityVerletStepDpmList(int step, double T_target, double damping);
+        void noseHooverVelocityVerletStepList(int step, double T_target, double damping);
+        void shiftToVelocityMean(double vx, double vy);
+        void scaleVelocitiesToTemp(double T_target, double seed);
 };
 
 
@@ -114,5 +116,6 @@ inline void Disks2D::dampDisks(double damping) {
         }
     }
 }
+
 
 #endif // DISK_HPP

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <regex>
 #include <string>
+#include <time.h>
 
 #include "H5Cpp.h"
 
@@ -36,9 +37,8 @@ int main() {
     // int step = -1;  // this will be overwritten to restart from the latest step
     // readDpmDataFromStep("./data/test.h5", step, dpms, simparams);
 
-    double seed = 42;
     double temp_target = 1e-3;
-    int num_dpms = 100;
+    int num_dpms = 20;
     double phi_target = 0.7;
     int num_steps = 1000;
 
@@ -52,7 +52,7 @@ int main() {
     SimParams2D simparams = SimParams2D(20.0, 20.0, 1e-3, 1.0, 1.0, 100.0, 100.0, 100.0, 1.0);
 
     // make the disk packing
-    Disks2D disks = packDisks2D_0Pressure(num_dpms, {1.0, 1.4}, {0.5, 0.5}, simparams, seed, 1000000, 0.0001, 1e-5, phi_target, 10000, 0.1);
+    Disks2D disks = packDisks2D_0Pressure(num_dpms, {1.0}, {1.0}, simparams, time(0), 1000000, 0.0001, 1e-5, phi_target, 10000, 0.1);
 
     double area = 0.0;
     for (int i = 0; i < disks.sigma.size(); ++i) {
@@ -61,20 +61,9 @@ int main() {
     area /= (simparams.box_size[0] * simparams.box_size[1]);
     std::cout << "phi: " << area << std::endl;
 
-    // make the dpms
-    std::vector<DPM2D> dpms = generateDpmsFromDisks(disks, 5.0, 0.92);
-    scaleDpmsToTemp(dpms, temp_target, seed);
+    disks.scaleVelocitiesToTemp(temp_target, time(0));
 
-    // WHEN MAKING DPMS FROM CIRCULAR COORDS - DECREASE THE RADIUS OF THE CIRCLE BY SIGMA / 2 THEN ADD THE VERTICES
     
-    // fix the vertex size, vary the number of vertices
-    area = 0.0;
-    for (int i = 0; i < dpms.size(); ++i) {
-        dpms[i].calcAreaWithCorrection();
-        area += dpms[i].area;
-    }
-    area /= (simparams.box_size[0] * simparams.box_size[1]);
-    std::cout << "phi: " << area << std::endl;
 
 
     // // create the file
