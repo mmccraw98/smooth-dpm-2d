@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "sim.hpp"
+#include "misc.hpp"
 
 class Disks2D {
     public:
@@ -30,6 +31,8 @@ class Disks2D {
         inline void noseHooverVelocityVerletHalfVelocityStep(double& ke_half_sum, double& ke_sum);
         inline void noseHooverVelocityVerletFullVelocityStep();
         inline void dampDisks(double damping);
+        inline void langevinBAOABFullPositionStep(const double temp_target, const double gamma);
+        inline void langevinBAOABFullVelocityStep(const double temp_target, const double gamma);
 
         // Member Functions
         void setInteractionForceEnergy();
@@ -117,5 +120,33 @@ inline void Disks2D::dampDisks(double damping) {
     }
 }
 
+inline void Disks2D::langevinBAOABFullPositionStep(const double temp_target, const double gamma) {
+    // in the process, acceleration is overwritten
+    for (int i = 0; i < this->n_particles; ++i) {
+        for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
+            // store the half-step velocity in the acceleration for now
+            this->acc[this->simparams.N_dim * i + dim] = this->vel[this->simparams.N_dim * i + dim] + 0.5 * (this->force[this->simparams.N_dim * i + dim] / this->simparams.mass_vertex) * this->simparams.dt;
+            // overwrite the posotion with the half-step position
+            this->pos_vertex[this->simparams.N_dim * i + dim] += this->simparams.dt * this->vel_vertex[this->simparams.N_dim * i + dim] * 0.5;
+            // get random normal distribution with mean zero and std dev 1
+            double G = generateRandomNormal();
+            // update the velocity to the half-step prime velocity
+            this->vel_vertex[this->simparams.N_dim * i + dim] = exp(-gamma * this->simparams.dt / this->simparams.mass_vertex) * this->acc_vertex[this->simparams.N_dim * i + dim] + std::sqrt(1 - exp(-2 * gamma * this->simparams.dt / this->simparams.mass_vertex)) * std::sqrt(this->simparams.kb * temp_target / this->simparams.mass_vertex) * G;
+            // update the position to the full-step position
+            this->pos_vertex[this->simparams.N_dim * i + dim] += this->simparams.dt * this->vel_vertex[this->simparams.N_dim * i + dim] * 0.5;
+        }
+    }
+}
+
+inline void Disks2D::langevinBAOABFullVelocityStep(const double temp_target, const double gamma) {
+    for (int i = 0; i < this->n_particles; ++i) {
+        for (int dim = 0; dim < this->simparams.N_dim; ++dim) {
+            // update the acceleration from the force
+            this->acc[this->simparams.N_dim * i + dim] = this->force[this->simparams.N_dim * i + dim] / this->simparams.mass_vertex;
+            // update the velocity to the full-step velocity
+            this->vel[this->simparams.N_dim * i + dim] += 0.5 * this->simparams.dt * this->force[this->simparams.N_dim * i + dim] / this->simparams.mass_vertex;
+        }
+    }
+}
 
 #endif // DISK_HPP
